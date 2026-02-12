@@ -1,0 +1,22 @@
+/.venv
+/.venv/
+/src/trailtraining/features/
+/tests/
+/strava_access_token.pkl
+/running
+/garmindb.log
+.env.local
+.DS_Store
+**/.DS_Store
+
+
+# python build artifacts
+__pycache__/
+*.pyc
+build/
+dist/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/.idea/

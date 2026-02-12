@@ -1,0 +1,8 @@
+pandas
+numpy
+matplotlib
+seaborn
+stravalib
+Flask
+requests
+openai>=1.0.0
