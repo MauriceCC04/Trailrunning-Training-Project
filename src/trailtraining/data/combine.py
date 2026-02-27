@@ -30,6 +30,18 @@ def parse_garmin_entry(entry):
         "awake_seconds": entry["awakeSleepSeconds"],
     }
 
+
+def parse_sleep_entry(entry):
+    # only keep what you want
+    sleep_seconds = entry.get("sleepTimeSeconds")
+    return {
+        "date": entry["calendarDate"],
+        "sleep_hours": round((sleep_seconds or 0) / 3600, 2),
+        "sleep_time_seconds": sleep_seconds,
+        "resting_hr": entry.get("restingHeartRate"),
+        "avg_hrv": entry.get("avgOvernightHrv"),
+    }
+
 def _date_only_from_strava(dt):
     s = str(dt).replace('Z','')
     if '.' in s:
@@ -104,30 +116,40 @@ def parse_strava_entry(entry):
 
 def main():
     with open(os.path.join(config.PROCESSING_DIRECTORY, "filtered_sleep.json")) as f:
-        garmin_data = json.load(f)
+        sleep_data = json.load(f)
 
     with open(os.path.join(config.PROCESSING_DIRECTORY, "strava_activities.json")) as f:
         strava_data = json.load(f)
 
-    parsed_garmin = {entry["calendarDate"]: parse_garmin_entry(entry) for entry in garmin_data}
+    parsed_sleep = {e["calendarDate"]: parse_sleep_entry(e) for e in sleep_data}
+
     parsed_strava = {}
     for entry in strava_data:
         date_key = str(entry.get("start_date_local")).replace("T", " ")[:10]
         parsed_strava.setdefault(date_key, []).append(parse_strava_entry(entry))
 
+    # union of dates so days with activities but no sleep still appear
+    all_dates = sorted(set(parsed_sleep.keys()) | set(parsed_strava.keys()))
+
     combined_summary = []
-    for date in sorted(parsed_garmin.keys()):
-        summary = {"date": date}
-        summary.update(parsed_garmin[date])
-        summary["activities"] = parsed_strava.get(date, [])
+    for d in all_dates:
+        summary = {"date": d}
+        if d in parsed_sleep:
+            # parsed_sleep[d] already contains "date", but we don’t need duplicates
+            sleep_fields = dict(parsed_sleep[d])
+            sleep_fields.pop("date", None)
+            summary.update(sleep_fields)
+
+        summary["activities"] = parsed_strava.get(d, [])
         combined_summary.append(summary)
-    #if the file already exists, remove it
-    if os.path.exists(os.path.join(config.PROMPTING_DIRECTORY, "combined_summary.json")):
-        os.remove(os.path.join(config.PROMPTING_DIRECTORY, "combined_summary.json"))
 
     output_file = os.path.join(config.PROMPTING_DIRECTORY, "combined_summary.json")
-    with open(output_file, 'w') as f:
+    if os.path.exists(output_file):
+        os.remove(output_file)
+
+    with open(output_file, "w") as f:
         json.dump(combined_summary, f, indent=4)
+
 
 if __name__ == "__main__":
     main()

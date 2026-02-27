@@ -33,6 +33,20 @@ STRAVA_REDIRECT_URI = _env("STRAVA_REDIRECT_URI", "http://localhost:8000/callbac
 GARMIN_EMAIL = _env("GARMIN_EMAIL", "")
 GARMIN_PASSWORD = _env("GARMIN_PASSWORD", "")
 
+#intervals:
+# ---- Intervals.icu (wellness: sleep + HR) ----
+# Personal/single-user integration (Intervals Settings → API Access)
+INTERVALS_API_KEY = os.environ.get("INTERVALS_API_KEY", "")
+INTERVALS_ATHLETE_ID = os.environ.get("INTERVALS_ATHLETE_ID", "0")  # "0" = current athlete
+
+# Optional: if you later switch to OAuth (multi-user/public app)
+INTERVALS_CLIENT_ID = os.environ.get("INTERVALS_CLIENT_ID", "")
+INTERVALS_CLIENT_SECRET = os.environ.get("INTERVALS_CLIENT_SECRET", "")
+INTERVALS_REDIRECT_URI = os.environ.get("INTERVALS_REDIRECT_URI", "")
+
+# Optional: let your app choose the wellness provider
+WELLNESS_PROVIDER = os.environ.get("WELLNESS_PROVIDER", "intervals")
+
 
 def ensure_directories() -> None:
     """Create all expected directories."""

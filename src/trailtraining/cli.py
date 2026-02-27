@@ -34,6 +34,13 @@ def cmd_run_all(_args):
     from trailtraining.pipelines import run_all
     _run(run_all.main)
 
+def cmd_fetch_intervals(_args):
+    from trailtraining.pipelines import intervals
+    _run(intervals.main)
+
+def cmd_run_all_intervals(_args):
+    from trailtraining.pipelines import run_all_intervals
+    _run(run_all_intervals.main)
 
 def cmd_coach(args):
     from trailtraining.llm.coach import CoachConfig, run_coach_brief
@@ -91,6 +98,18 @@ def main(argv=None):
     coach_p.add_argument("--summary", default=None,
                          help="Explicit path to combined_summary.json (overrides --input)")
     coach_p.set_defaults(func=cmd_coach)
+
+    intervals_p = sub.add_parser("fetch-intervals", help="Fetch sleep + resting HR from Intervals.icu")
+    intervals_p.set_defaults(func=cmd_fetch_intervals)
+    sub.add_parser("run-all-intervals", help="Run full pipeline (Intervals → Strava → Combine)").set_defaults(
+        func=cmd_run_all_intervals)
+
+    intervals_p.add_argument("--script", default=os.getenv("TRAILTRAINING_INTERVALS_SCRIPT",
+                                                           "scripts/intervals_fetch_wellness.mjs"))
+    intervals_p.add_argument("--oldest", default=None, help="YYYY-MM-DD (default: lookback window)")
+    intervals_p.add_argument("--newest", default=None, help="YYYY-MM-DD (default: today)")
+    intervals_p.set_defaults(func=cmd_fetch_intervals)
+
 
     args = parser.parse_args(argv)
     args.func(args)
