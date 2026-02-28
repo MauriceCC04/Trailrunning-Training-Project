@@ -128,7 +128,21 @@ def main():
         date_key = str(entry.get("start_date_local")).replace("T", " ")[:10]
         parsed_strava.setdefault(date_key, []).append(parse_strava_entry(entry))
 
-    # union of dates so days with activities but no sleep still appear
+    # --- align start date: start at the later (max) of the two series' earliest dates ---
+    sleep_min = min(parsed_sleep) if parsed_sleep else None
+    strava_min = min(parsed_strava) if parsed_strava else None
+
+    if sleep_min and strava_min:
+        cutoff_start = max(sleep_min, strava_min)
+    else:
+        # If one side is empty, just use the other side's start (or None if both empty)
+        cutoff_start = sleep_min or strava_min
+
+    if cutoff_start:
+        parsed_sleep = {d: v for d, v in parsed_sleep.items() if d >= cutoff_start}
+        parsed_strava = {d: v for d, v in parsed_strava.items() if d >= cutoff_start}
+
+    # union of dates (after cutoff) so days with activities but no sleep still appear
     all_dates = sorted(set(parsed_sleep.keys()) | set(parsed_strava.keys()))
 
     combined_summary = []

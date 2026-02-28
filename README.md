@@ -47,6 +47,20 @@ trailtraining run-all
 it takes a while to download your garmin data at first
 but the next updates are incremental and should not take nearly as long
 
+Instead, if you use intervals.icu, you can run it via intervals.icu's API instead. You must go and get your credentials but it is otherwise simple:
+
+instead of setting the garmin credentials, you set the following:
+export INTERVALS_API_KEY=""
+export INTERVALS_ATHLETE_ID=""
+
+export OLDEST="2023-01-01" #this is a sample date you can change
+export NEWEST="2026-02-27" #another sample date you can change
+node scripts/intervals_fetch_wellness.mjs
+
+trailtraining run-all-intervals
+
+this is much faster than the garmin download and but does not include all wellness data
+
 Aftewards, to run the LLM based coaching extension you must do the following:
 
 1. go to open ai api key website

@@ -22,6 +22,7 @@ src/trailtraining/pipelines/download_garmin_data.py
 src/trailtraining/pipelines/garmin.py
 src/trailtraining/pipelines/intervals.py
 src/trailtraining/pipelines/run_all.py
+src/trailtraining/pipelines/run_all_intervals.py
 src/trailtraining/pipelines/strava.py
 src/trailtraining/web/__init__.py
 src/trailtraining/web/auth_server.py
