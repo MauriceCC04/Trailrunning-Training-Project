@@ -1,46 +1,71 @@
 # src/trailtraining/cli.py
 import argparse
-import importlib
 import sys
 import os
+
 
 def _run(func):
     try:
         func()
-    except SystemExit as e:
+    except SystemExit:
         raise
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
+
 
 def cmd_auth_strava(_args):
     # Your strava pipeline handles auth flow already
     from trailtraining.pipelines import strava
     _run(strava.main)
 
+
 def cmd_fetch_strava(_args):
     from trailtraining.pipelines import strava
     _run(strava.main)
+
 
 def cmd_fetch_garmin(_args):
     from trailtraining.pipelines import garmin
     _run(garmin.main)
 
+
 def cmd_combine(_args):
     from trailtraining.data import combine
     _run(combine.main)
 
-def cmd_run_all(_args):
+
+def cmd_run_all(args):
     from trailtraining.pipelines import run_all
-    _run(run_all.main)
+    _run(
+        lambda: run_all.main(
+            clean=getattr(args, "clean", False),
+            clean_processing=getattr(args, "clean_processing", False),
+            clean_prompting=getattr(args, "clean_prompting", False),
+        )
+    )
 
-def cmd_fetch_intervals(_args):
+
+def cmd_fetch_intervals(args):
     from trailtraining.pipelines import intervals
-    _run(intervals.main)
+    _run(
+        lambda: intervals.main(
+            oldest=getattr(args, "oldest", None),
+            newest=getattr(args, "newest", None),
+        )
+    )
 
-def cmd_run_all_intervals(_args):
+
+def cmd_run_all_intervals(args):
     from trailtraining.pipelines import run_all_intervals
-    _run(run_all_intervals.main)
+    _run(
+        lambda: run_all_intervals.main(
+            clean=getattr(args, "clean", False),
+            clean_processing=getattr(args, "clean_processing", False),
+            clean_prompting=getattr(args, "clean_prompting", False),
+        )
+    )
+
 
 def cmd_coach(args):
     from trailtraining.llm.coach import CoachConfig, run_coach_brief
@@ -66,7 +91,6 @@ def cmd_coach(args):
         print(f"\n[Saved] {out_path}")
 
 
-
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="trailtraining", description="TrailTraining CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -75,8 +99,27 @@ def main(argv=None):
     sub.add_parser("fetch-strava", help="Fetch activities from Strava").set_defaults(func=cmd_fetch_strava)
     sub.add_parser("fetch-garmin", help="Fetch/process data from Garmin").set_defaults(func=cmd_fetch_garmin)
     sub.add_parser("combine", help="Combine Garmin + Strava JSONs").set_defaults(func=cmd_combine)
-    sub.add_parser("run-all", help="Run full pipeline (Garmin → Strava → Combine)").set_defaults(func=cmd_run_all)
-    #sub.add_parser("train-fatigue", help="Run fatigue model script").set_defaults(func=cmd_train_fatigue)
+
+    # run-all (now preserves processing/ by default so Strava incremental works)
+    run_all_p = sub.add_parser("run-all", help="Run full pipeline (Garmin → Strava → Combine)")
+    run_all_p.add_argument(
+        "--clean",
+        action="store_true",
+        help="Delete files in BOTH processing/ and prompting/ before running (disables incremental Strava).",
+    )
+    run_all_p.add_argument(
+        "--clean-processing",
+        action="store_true",
+        help="Delete files in processing/ before running (disables incremental Strava).",
+    )
+    run_all_p.add_argument(
+        "--clean-prompting",
+        action="store_true",
+        help="Delete files in prompting/ before running.",
+    )
+    run_all_p.set_defaults(func=cmd_run_all)
+
+    # coach
     coach_p = sub.add_parser("coach", help="LLM coach analysis on combined_summary.json + formatted_personal_data.json")
     coach_p.add_argument("--prompt", default="training-plan",
                          choices=["training-plan", "recovery-status", "meal-plan"])
@@ -99,20 +142,39 @@ def main(argv=None):
                          help="Explicit path to combined_summary.json (overrides --input)")
     coach_p.set_defaults(func=cmd_coach)
 
+    # intervals
     intervals_p = sub.add_parser("fetch-intervals", help="Fetch sleep + resting HR from Intervals.icu")
-    intervals_p.set_defaults(func=cmd_fetch_intervals)
-    sub.add_parser("run-all-intervals", help="Run full pipeline (Intervals → Strava → Combine)").set_defaults(
-        func=cmd_run_all_intervals)
-
-    intervals_p.add_argument("--script", default=os.getenv("TRAILTRAINING_INTERVALS_SCRIPT",
-                                                           "scripts/intervals_fetch_wellness.mjs"))
+    intervals_p.add_argument(
+        "--script",
+        default=None,
+        help="(deprecated) Old node script path. Ignored; Python Intervals fetch is used.",
+    )
     intervals_p.add_argument("--oldest", default=None, help="YYYY-MM-DD (default: lookback window)")
     intervals_p.add_argument("--newest", default=None, help="YYYY-MM-DD (default: today)")
     intervals_p.set_defaults(func=cmd_fetch_intervals)
 
+    # run-all-intervals (also preserves processing/ by default)
+    run_all_int_p = sub.add_parser("run-all-intervals", help="Run full pipeline (Intervals → Strava → Combine)")
+    run_all_int_p.add_argument(
+        "--clean",
+        action="store_true",
+        help="Delete files in BOTH processing/ and prompting/ before running (disables incremental Strava).",
+    )
+    run_all_int_p.add_argument(
+        "--clean-processing",
+        action="store_true",
+        help="Delete files in processing/ before running (disables incremental Strava).",
+    )
+    run_all_int_p.add_argument(
+        "--clean-prompting",
+        action="store_true",
+        help="Delete files in prompting/ before running.",
+    )
+    run_all_int_p.set_defaults(func=cmd_run_all_intervals)
 
     args = parser.parse_args(argv)
     args.func(args)
+
 
 if __name__ == "__main__":
     main()

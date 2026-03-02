@@ -57,13 +57,29 @@ instead of setting the garmin credentials, you set the following:
 export INTERVALS_API_KEY=""
 export INTERVALS_ATHLETE_ID=""
 
-export OLDEST="2023-01-01" #this is a sample date you can change
-export NEWEST="2026-02-27" #another sample date you can change
-node scripts/intervals_fetch_wellness.mjs
+# Optional date range (recommended env names):
+export TRAILTRAINING_WELLNESS_OLDEST="2023-01-01"
+export TRAILTRAINING_WELLNESS_NEWEST="2026-02-27"
+# Back-compat also works:
+# export OLDEST="2023-01-01"
+# export NEWEST="2026-02-27"
 
+# Fetch wellness only:
+trailtraining fetch-intervals --oldest "2023-01-01" --newest "2026-02-27"
+
+# Or run the full Intervals pipeline:
 trailtraining run-all-intervals
-
 this is much faster than the garmin download and but does not include all wellness data
+
+
+this gives options:
+
+pip install -e .
+trailtraining -h
+trailtraining run-all -h
+trailtraining fetch-intervals -h
+trailtraining run-all-intervals -h
+
 
 Aftewards, to run the LLM based coaching extension you must do the following:
 

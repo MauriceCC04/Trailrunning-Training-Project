@@ -8,6 +8,7 @@ src/trailtraining.egg-info/PKG-INFO
 src/trailtraining.egg-info/SOURCES.txt
 src/trailtraining.egg-info/dependency_links.txt
 src/trailtraining.egg-info/entry_points.txt
+src/trailtraining.egg-info/requires.txt
 src/trailtraining.egg-info/top_level.txt
 src/trailtraining/data/__init__.py
 src/trailtraining/data/combine.py

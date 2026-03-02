@@ -3,4 +3,12 @@ Name: trailtraining
 Version: 0.1.0
 Summary: Pipelines for Garmin/Strava + fatigue modeling
 Requires-Python: >=3.9
+Requires-Dist: numpy
+Requires-Dist: matplotlib
+Requires-Dist: pandas
+Requires-Dist: seaborn
+Requires-Dist: stravalib
+Requires-Dist: Flask
+Requires-Dist: requests
+Requires-Dist: openai>=1.0.0
 Dynamic: summary

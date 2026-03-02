@@ -13,14 +13,6 @@ from trailtraining import config
 BASE_URL = os.getenv("INTERVALS_BASE_URL", "https://intervals.icu/api/v1")
 
 
-def _get_env(name: str, required: bool = True, default: Optional[str] = None) -> str:
-    v = os.getenv(name, default) or ""
-    v = v.strip()
-    if required and not v:
-        raise RuntimeError(f"Missing environment variable: {name}")
-    return v
-
-
 def _pick(obj: Dict[str, Any], *keys: str, default: Any = None) -> Any:
     for k in keys:
         if k in obj and obj[k] is not None:
@@ -75,16 +67,8 @@ def normalize_to_filtered_sleep(entry: Dict[str, Any]) -> Dict[str, Any]:
     sleep_secs = _to_int(_pick(entry, "sleepSecs", "sleep_seconds", "sleepTimeSeconds"))
     resting_hr = _to_int(_pick(entry, "restingHR", "restingHr", "restingHeartRate"))
 
-    # Sleep stages may or may not exist in Intervals for your source; keep defaults if missing
-    deep = _to_int(_pick(entry, "deepSleepSecs", "deepSleepSeconds"))
-    light = _to_int(_pick(entry, "lightSleepSecs", "lightSleepSeconds"))
-    rem = _to_int(_pick(entry, "remSleepSecs", "remSleepSeconds"))
-    awake = _to_int(_pick(entry, "awakeSleepSecs", "awakeSleepSeconds"))
-
     # HRV/status/body battery are Garmin-ish fields expected by your current schema
     avg_hrv = _to_int(_pick(entry, "avgOvernightHrv", "hrv", "hrvRmssd", "rmssd"))
-    hrv_status = str(_pick(entry, "hrvStatus", "hrv_status", default="") or "")
-    body_battery_change = _to_int(_pick(entry, "bodyBatteryChange", "body_battery_change"))
 
     return {
         "calendarDate": day,
@@ -93,8 +77,8 @@ def normalize_to_filtered_sleep(entry: Dict[str, Any]) -> Dict[str, Any]:
         "avgOvernightHrv": avg_hrv,
     }
 
+
 def ensure_personal_stub() -> None:
-    # coach requires this file to exist :contentReference[oaicite:2]{index=2}
     out_path = os.path.join(config.PROMPTING_DIRECTORY, "formatted_personal_data.json")
     if os.path.exists(out_path):
         return
@@ -103,16 +87,47 @@ def ensure_personal_stub() -> None:
         json.dump(stub, f, indent=2)
 
 
-def main() -> None:
-    os.makedirs(config.PROCESSING_DIRECTORY, exist_ok=True)
-    os.makedirs(config.PROMPTING_DIRECTORY, exist_ok=True)
+def _validate_ymd(s: str, name: str) -> str:
+    s = (s or "").strip()
+    try:
+        date.fromisoformat(s)
+    except Exception:
+        raise RuntimeError(f"{name} must be YYYY-MM-DD. Got: {s!r}")
+    return s
 
-    newest = os.getenv("TRAILTRAINING_WELLNESS_NEWEST", date.today().isoformat())
+
+def main(*, oldest: Optional[str] = None, newest: Optional[str] = None) -> None:
+    config.ensure_directories()
+
+    # Priority:
+    # 1) CLI args
+    # 2) New env names: TRAILTRAINING_WELLNESS_OLDEST / TRAILTRAINING_WELLNESS_NEWEST
+    # 3) Back-compat env names used by README/node script: OLDEST / NEWEST
+    # 4) Fallback: lookback window to today
+    newest_raw = (
+        newest
+        or os.getenv("TRAILTRAINING_WELLNESS_NEWEST")
+        or os.getenv("NEWEST")
+        or date.today().isoformat()
+    )
+
     lookback_days = int(os.getenv("TRAILTRAINING_WELLNESS_LOOKBACK_DAYS", "200"))
-    oldest = os.getenv("TRAILTRAINING_WELLNESS_OLDEST", (date.today() - timedelta(days=lookback_days)).isoformat())
+    oldest_default = (date.today() - timedelta(days=lookback_days)).isoformat()
+    oldest_raw = (
+        oldest
+        or os.getenv("TRAILTRAINING_WELLNESS_OLDEST")
+        or os.getenv("OLDEST")
+        or oldest_default
+    )
 
-    print(f"Fetching Intervals wellness {oldest} → {newest} ...")
-    raw = fetch_wellness(oldest=oldest, newest=newest)
+    newest_v = _validate_ymd(newest_raw, "newest")
+    oldest_v = _validate_ymd(oldest_raw, "oldest")
+
+    if date.fromisoformat(oldest_v) > date.fromisoformat(newest_v):
+        raise RuntimeError(f"oldest must be <= newest (got {oldest_v} > {newest_v})")
+
+    print(f"Fetching Intervals wellness {oldest_v} → {newest_v} ...")
+    raw = fetch_wellness(oldest=oldest_v, newest=newest_v)
     normalized = [normalize_to_filtered_sleep(x) for x in raw]
     normalized.sort(key=lambda r: r["calendarDate"])
 
