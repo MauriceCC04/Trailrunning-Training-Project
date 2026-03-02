@@ -3,6 +3,7 @@ import os
 from trailtraining import config
 from datetime import datetime, timedelta
 import glob
+import pandas as pd
 
 def combine_json_files(directory: str, output_file: str) -> None:
     """
