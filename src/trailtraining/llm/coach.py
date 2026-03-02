@@ -12,6 +12,7 @@ from openai import OpenAI
 
 from trailtraining import config
 from trailtraining.util.state import load_json, save_json
+from trailtraining.llm.prompts import SYSTEM_PROMPT
 
 
 def _as_date(s: str) -> Optional[date]:
@@ -291,8 +292,11 @@ def run_coach_brief(
     client = OpenAI(api_key=api_key)
 
     # Official pattern: reasoning + text verbosity via Responses API
+    # Official pattern: reasoning + text verbosity via Responses API
+    # Use SYSTEM_PROMPT as actual system instructions (previously unused).
     kwargs: Dict[str, Any] = {
         "model": cfg.model,
+        "instructions": SYSTEM_PROMPT,
         "input": prompt_text,
         "reasoning": {"effort": cfg.reasoning_effort},
         "text": {"verbosity": cfg.verbosity},

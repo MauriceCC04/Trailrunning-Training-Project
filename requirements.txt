@@ -1,8 +1,4 @@
-numpy
-matplotlib
-pandas
-seaborn
-stravalib
 Flask
-requests
 openai>=1.0.0
+pandas
+requests

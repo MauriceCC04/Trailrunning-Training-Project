@@ -105,8 +105,6 @@ additionally,
 you could run the following:
 if you need to specify the path
 trailtraining coach --prompt recovery-status --input /path/to/prompting/
-# or a zip export:
-trailtraining coach --prompt recovery-status --input /path/to/prompting_bundle.zip
 
 to make it easier,
 i have set up a file called .env.local which includes all the local parameters (Login data, api keys, etc)
