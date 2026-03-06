@@ -4,6 +4,37 @@ from __future__ import annotations
 from typing import Any, Dict
 
 
+_SNAPSHOT_KEYS = [
+    "distance_km",
+    "moving_time_hours",
+    "elevation_m",
+    "activity_count",
+    "sleep_hours_mean",
+    "hrv_mean",
+    "rhr_mean",
+]
+
+def _snapshot_obj_schema() -> Dict[str, Any]:
+    # OpenAI strict schema requires:
+    # - additionalProperties: false on every object
+    # - required must include EVERY key in properties
+    # We use string values so missing data can be represented as "" (empty string).
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": list(_SNAPSHOT_KEYS),
+        "properties": {
+            "distance_km": {"type": "string"},
+            "moving_time_hours": {"type": "string"},
+            "elevation_m": {"type": "string"},
+            "activity_count": {"type": "string"},
+            "sleep_hours_mean": {"type": "string"},
+            "hrv_mean": {"type": "string"},
+            "rhr_mean": {"type": "string"},
+        },
+    }
+
+
 TRAINING_PLAN_SCHEMA: Dict[str, Any] = {
     "name": "trailtraining_training_plan_v1",
     "schema": {
@@ -27,8 +58,8 @@ TRAINING_PLAN_SCHEMA: Dict[str, Any] = {
                 "additionalProperties": False,
                 "required": ["last7", "baseline28", "notes"],
                 "properties": {
-                    "last7": {"type": "object"},
-                    "baseline28": {"type": "object"},
+                    "last7": _snapshot_obj_schema(),
+                    "baseline28": _snapshot_obj_schema(),
                     "notes": {"type": "string"},
                 },
             },
@@ -82,17 +113,7 @@ TRAINING_PLAN_SCHEMA: Dict[str, Any] = {
                                 "title": {"type": "string"},
                                 "session_type": {
                                     "type": "string",
-                                    "enum": [
-                                        "rest",
-                                        "easy",
-                                        "aerobic",
-                                        "long",
-                                        "tempo",
-                                        "intervals",
-                                        "hills",
-                                        "strength",
-                                        "cross",
-                                    ],
+                                    "enum": ["rest", "easy", "aerobic", "long", "tempo", "intervals", "hills", "strength", "cross"],
                                 },
                                 "is_rest_day": {"type": "boolean"},
                                 "is_hard_day": {"type": "boolean"},
@@ -132,7 +153,6 @@ TRAINING_PLAN_SCHEMA: Dict[str, Any] = {
             "data_notes": {"type": "array", "items": {"type": "string"}},
             "citations": {
                 "type": "array",
-                "description": "Citations to the signal registry. Include only signal_ids present in the registry.",
                 "items": {
                     "type": "object",
                     "additionalProperties": False,
@@ -141,7 +161,8 @@ TRAINING_PLAN_SCHEMA: Dict[str, Any] = {
                         "signal_id": {"type": "string"},
                         "source": {"type": "string"},
                         "date_range": {"type": "string"},
-                        "value": {},
+                        # keep as string to avoid strict union-type issues
+                        "value": {"type": "string"},
                     },
                 },
             },
@@ -151,7 +172,6 @@ TRAINING_PLAN_SCHEMA: Dict[str, Any] = {
 
 
 def training_plan_output_contract_text() -> str:
-    # Appended to prompt so even without schema-mode the model is pushed into strict JSON.
     return (
         "Output MUST be a single JSON object (no Markdown, no backticks) matching the training-plan schema.\n"
         "Rules:\n"
@@ -159,6 +179,8 @@ def training_plan_output_contract_text() -> str:
         "- Every plan day MUST include signal_ids justifying that day.\n"
         "- readiness.signal_ids MUST justify readiness.\n"
         "- citations MUST list the signal_ids you used (dedup ok).\n"
+        "- citations[].value MUST be a STRING.\n"
+        "- snapshot.last7 and snapshot.baseline28 MUST include all keys; use empty string \"\" if unknown.\n"
         "- If data is missing, write it in data_notes; do NOT fabricate.\n"
     )
 
@@ -173,10 +195,6 @@ def _require(obj: Dict[str, Any], key: str, typ: Any) -> Any:
 
 
 def ensure_training_plan_shape(obj: Any) -> Dict[str, Any]:
-    """
-    Lightweight validation (no external jsonschema dependency).
-    Raises ValueError if critical structure is missing.
-    """
     if not isinstance(obj, dict):
         raise ValueError("Training plan output must be a JSON object (dict).")
 
