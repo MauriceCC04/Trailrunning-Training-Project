@@ -1,8 +1,9 @@
 ### Trailrunning Training Project — User Guide
 
-This project pulls your **training + wellness** data (**GarminDb or Intervals.icu** + **Strava**), combines it into a clean dataset, and optionally runs an LLM “coach” to generate:
+This project pulls your **training + wellness** data (**GarminDb or Intervals.icu** + **Strava**), combines it into a clean dataset, and optionally runs an LLM “coach”.
 
-- training plans
+The coach can generate:
+- training plans (structured JSON output)
 - recovery status
 - meal plans
 
@@ -12,7 +13,7 @@ It supports **multi-user profiles** (separate Strava tokens + separate data fold
 
 ## Quickstart
 
-```
+```bash
 # install (see Installation)
 trailtraining --profile alice doctor
 
@@ -21,6 +22,12 @@ trailtraining --profile alice auth-strava
 
 # run pipeline (auto-picks Intervals vs Garmin)
 trailtraining --profile alice run-all
+
+# generate a structured training plan (JSON)
+trailtraining --profile alice coach --prompt training-plan
+
+# evaluate the plan against constraints (ramp + hard-day streak)
+trailtraining eval-coach --input ~/trailtraining-data/alice/prompting/coach_brief_training-plan.json
 ````
 
 ---
@@ -82,20 +89,20 @@ the CLI will:
 
 1. Load environment variables from:
 
-* `~/.trailtraining/profiles/alice.env` (if it exists)
+   * `~/.trailtraining/profiles/alice.env` (if it exists)
 
 2. Use an isolated default data directory (unless you override it):
 
-* `~/trailtraining-data/alice/`
+   * `~/trailtraining-data/alice/`
 
 3. Store Strava tokens per profile:
 
-* `~/trailtraining-data/alice/tokens/strava_token.json`
+   * `~/trailtraining-data/alice/tokens/strava_token.json`
 
 4. For Garmin users, write a per-profile GarminDb config:
 
-* `~/.trailtraining/garmin/alice/GarminConnectConfig.json`
-  and make GarminDb’s active config (`~/.GarminDb/GarminConnectConfig.json`) point to the active profile config.
+   * `~/.trailtraining/garmin/alice/GarminConnectConfig.json`
+     and make GarminDb’s active config (`~/.GarminDb/GarminConnectConfig.json`) point to the active profile config.
 
 > The profile env file does **not** override variables you already set in your shell. Shell env vars win.
 
@@ -111,7 +118,6 @@ Create one env file per user, e.g. `~/.trailtraining/profiles/alice.env`:
 
 ```bash
 # --- Required for Strava (PER USER) ---
-# Each user creates their own Strava API application and uses their own Client ID/Secret here.
 STRAVA_CLIENT_ID="..."
 STRAVA_CLIENT_SECRET="..."
 STRAVA_REDIRECT_URI="http://127.0.0.1:5000/authorization"
@@ -169,13 +175,6 @@ It checks:
 ---
 
 ## Strava setup (required, per user)
-
-### Why per user?
-
-In your current setup, you found that **each Strava account needs its own Strava API app credentials**. That means:
-
-* Alice creates a Strava API application while logged into Alice’s Strava account → puts those values in `alice.env`
-* Bob creates a Strava API application while logged into Bob’s Strava account → puts those values in `bob.env`
 
 ### Create the Strava API application (for each user)
 
@@ -303,13 +302,34 @@ TRAILTRAINING_VERBOSITY="medium"          # low|medium|high
 TRAILTRAINING_COACH_STYLE="trailrunning"  # trailrunning|triathlon
 ```
 
-Run prompts:
+### What makes the coach “engineering-grade”
+
+For `training-plan`, the coach:
+
+* uses **retrieved history** (weekly summaries for the last N weeks)
+* uses a **signal registry** and must cite `signal_ids` that justify recommendations
+* returns **structured JSON** (machine readable)
+
+Control retrieval / prompt size (env):
+
+```bash
+TRAILTRAINING_COACH_RETRIEVAL_WEEKS="8"   # weekly history window
+TRAILTRAINING_COACH_DETAIL_DAYS="14"      # number of recent daily blocks included
+TRAILTRAINING_COACH_DAYS="60"             # how many combined_summary days to consider
+TRAILTRAINING_COACH_MAX_CHARS="200000"    # max prompt text length budget
+```
+
+### Run prompts
 
 ```bash
 trailtraining --profile alice coach --prompt training-plan
 trailtraining --profile alice coach --prompt recovery-status
 trailtraining --profile alice coach --prompt meal-plan
 ```
+
+* `training-plan` saves: `coach_brief_training-plan.json`
+* `recovery-status` saves: `coach_brief_recovery-status.md`
+* `meal-plan` saves: `coach_brief_meal-plan.md`
 
 Override sport style on the CLI:
 
@@ -326,6 +346,40 @@ trailtraining --profile alice coach --prompt recovery-status --input /path/to/pr
 
 ---
 
+## Coach evaluation harness (recommended)
+
+Evaluate a `training-plan` JSON against safety/consistency constraints:
+
+```bash
+trailtraining eval-coach --input ~/trailtraining-data/alice/prompting/coach_brief_training-plan.json
+```
+
+Override thresholds:
+
+```bash
+trailtraining eval-coach \
+  --input ~/trailtraining-data/alice/prompting/coach_brief_training-plan.json \
+  --max-ramp-pct 10 \
+  --max-consecutive-hard 2
+```
+
+Env defaults:
+
+```bash
+TRAILTRAINING_MAX_RAMP_PCT="10"
+TRAILTRAINING_MAX_CONSEC_HARD="2"
+```
+
+Optional: write violations to a JSON file:
+
+```bash
+trailtraining eval-coach \
+  --input ~/trailtraining-data/alice/prompting/coach_brief_training-plan.json \
+  --output ~/violations.json
+```
+
+---
+
 ## Outputs and folders
 
 Within each profile’s `TRAILTRAINING_BASE_DIR` (default `~/trailtraining-data/<profile>/`):
@@ -333,7 +387,13 @@ Within each profile’s `TRAILTRAINING_BASE_DIR` (default `~/trailtraining-data/
 * `processing/`
   Intermediate state (including Strava incremental metadata). Usually keep this.
 * `prompting/`
-  Combined JSON outputs used by the coach.
+  Combined JSON outputs used by the coach:
+
+  * `combined_summary.json`
+  * `combined_rollups.json`
+  * `coach_brief_training-plan.json` (structured)
+  * `coach_brief_recovery-status.md`
+  * `coach_brief_meal-plan.md`
 
 Strava tokens are stored at:
 
@@ -398,4 +458,5 @@ trailtraining fetch-intervals -h
 trailtraining run-all-intervals -h
 
 trailtraining coach -h
+trailtraining eval-coach -h
 ```
