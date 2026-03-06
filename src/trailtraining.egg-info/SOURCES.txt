@@ -17,6 +17,7 @@ src/trailtraining/data/strava.py
 src/trailtraining/intervals/__init__.py
 src/trailtraining/llm/__init__.py
 src/trailtraining/llm/coach.py
+src/trailtraining/llm/presets.py
 src/trailtraining/llm/prompts.py
 src/trailtraining/pipelines/__init__.py
 src/trailtraining/pipelines/download_garmin_data.py

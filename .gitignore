@@ -22,3 +22,6 @@ dist/
 .vscode/.idea/
 
 my info.txt
+profiles/me.env
+profiles/me.env
+profiles/mom.env

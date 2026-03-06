@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from openai import OpenAI
 
 from trailtraining import config
-from trailtraining.util.state import load_json, save_json
-from trailtraining.llm.prompts import SYSTEM_PROMPT
+from trailtraining.util.state import load_json
+from trailtraining.llm.presets import get_system_prompt, get_task_prompt
 
 
 def _as_date(s: str) -> Optional[date]:
@@ -156,11 +156,12 @@ def _build_prompt_text(
     rollups: Optional[Any],
     combined: List[Dict[str, Any]],
     *,
+    style: str,
     max_chars: int,
     detail_days: int,
 ) -> str:
     """
-    F: Budgeted assembly.
+    Budgeted assembly.
     We build from newest → oldest until we hit max_chars, then stop.
     """
     header = [
@@ -208,30 +209,32 @@ def _build_prompt_text(
         text_parts.append(block)
         used += len(block)
 
-    # Add tail instruction
-    tail = "\n## Task\n" + _prompt_instruction(prompt_name) + "\n"
+    # Add tail instruction (style-aware for training-plan only)
+    tail = "\n## Task\n" + _prompt_instruction(prompt_name, style=style) + "\n"
     if used + len(tail) <= budget:
         text_parts.append(tail)
 
     return "\n".join(text_parts)
 
 
-def _prompt_instruction(prompt_name: str) -> str:
-    # Try to use your centralized prompts if present, else fall back.
+def _prompt_instruction(prompt_name: str, *, style: str) -> str:
+    """
+    Only style-switches:
+      - system instructions (handled elsewhere)
+      - training-plan task prompt (handled here via presets)
+    Other prompts remain unchanged from prompts.py.
+    """
     try:
-        from trailtraining.llm.prompts import PROMPTS  # type: ignore
-        if isinstance(PROMPTS, dict) and prompt_name in PROMPTS:
-            return str(PROMPTS[prompt_name])
+        return get_task_prompt(prompt_name, style=style)
     except Exception:
-        pass
-
-    if prompt_name == "training-plan":
-        return "Generate a trail-running training plan for the next 7–14 days based on fatigue, recent volume, and sleep."
-    if prompt_name == "recovery-status":
-        return "Assess recovery status for the last 7 days and give actionable guidance for today and tomorrow."
-    if prompt_name == "meal-plan":
-        return "Suggest a practical meal plan for the next 3 days aligned with training load and recovery."
-    return "Provide coaching guidance based on the provided data."
+        # Fallbacks (should rarely hit)
+        if prompt_name == "training-plan":
+            return "Generate a trail-running training plan for the next 7–14 days based on fatigue, recent volume, and sleep."
+        if prompt_name == "recovery-status":
+            return "Assess recovery status for the last 7 days and give actionable guidance for today and tomorrow."
+        if prompt_name == "meal-plan":
+            return "Suggest a practical meal plan for the next 3 days aligned with training load and recovery."
+        return "Provide coaching guidance based on the provided data."
 
 
 @dataclass(frozen=True)
@@ -242,6 +245,9 @@ class CoachConfig:
     days: int = int(os.getenv("TRAILTRAINING_COACH_DAYS", "60"))
     max_chars: int = int(os.getenv("TRAILTRAINING_COACH_MAX_CHARS", "200000"))
     temperature: Optional[float] = None
+
+    # NEW: prompt preset (per-profile default via env; CLI can override)
+    style: str = os.getenv("TRAILTRAINING_COACH_STYLE", "trailrunning")
 
 
 def run_coach_brief(
@@ -264,7 +270,7 @@ def run_coach_brief(
     if not isinstance(combined, list):
         raise RuntimeError("combined_summary.json must be a list of day objects")
 
-    # F: early pruning
+    # early pruning
     _dedup_activities_in_place(combined)
     combined = _filter_last_days(combined, cfg.days)
 
@@ -276,6 +282,7 @@ def run_coach_brief(
         personal=personal,
         rollups=rollups,
         combined=combined,
+        style=cfg.style,
         max_chars=cfg.max_chars,
         detail_days=detail_days,
     )
@@ -291,12 +298,12 @@ def run_coach_brief(
 
     client = OpenAI(api_key=api_key)
 
-    # Official pattern: reasoning + text verbosity via Responses API
-    # Official pattern: reasoning + text verbosity via Responses API
-    # Use SYSTEM_PROMPT as actual system instructions (previously unused).
+    # Use style-specific system instructions
+    system_instructions = get_system_prompt(cfg.style)
+
     kwargs: Dict[str, Any] = {
         "model": cfg.model,
-        "instructions": SYSTEM_PROMPT,
+        "instructions": system_instructions,
         "input": prompt_text,
         "reasoning": {"effort": cfg.reasoning_effort},
         "text": {"verbosity": cfg.verbosity},
