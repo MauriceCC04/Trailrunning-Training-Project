@@ -1,8 +1,31 @@
 # src/trailtraining/cli.py
 import argparse
+import logging
 import os
+import shutil
 import sys
 from pathlib import Path
+from typing import Optional
+
+
+def configure_logging(level: str) -> None:
+    """
+    Central logging setup for the CLI.
+
+    Priority:
+      1) CLI arg (--log-level)
+      2) env TRAILTRAINING_LOG_LEVEL
+      3) default INFO
+    """
+    raw = (level or os.getenv("TRAILTRAINING_LOG_LEVEL") or "INFO").upper().strip()
+    if raw not in {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"}:
+        raw = "INFO"
+
+    logging.basicConfig(
+        level=getattr(logging, raw),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        force=True,
+    )
 
 
 def _run(func):
@@ -10,8 +33,8 @@ def _run(func):
         func()
     except SystemExit:
         raise
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+    except Exception:
+        logging.getLogger(__name__).exception("Unhandled error")
         sys.exit(1)
 
 
@@ -58,48 +81,181 @@ def apply_profile(profile: str) -> str:
 
 def cmd_auth_strava(_args):
     from trailtraining.pipelines import strava
+
     _run(strava.main)
 
 
 def cmd_fetch_strava(_args):
     from trailtraining.pipelines import strava
+
     _run(strava.main)
 
 
 def cmd_fetch_garmin(_args):
     from trailtraining.pipelines import garmin
+
     _run(garmin.main)
 
 
 def cmd_combine(_args):
     from trailtraining.data import combine
+
     _run(combine.main)
 
 
 def cmd_run_all(args):
     from trailtraining.pipelines import run_all
-    _run(lambda: run_all.main(
-        clean=getattr(args, "clean", False),
-        clean_processing=getattr(args, "clean_processing", False),
-        clean_prompting=getattr(args, "clean_prompting", False),
-    ))
+
+    _run(
+        lambda: run_all.main(
+            clean=getattr(args, "clean", False),
+            clean_processing=getattr(args, "clean_processing", False),
+            clean_prompting=getattr(args, "clean_prompting", False),
+            wellness_provider=getattr(args, "wellness_provider", None),
+        )
+    )
 
 
 def cmd_fetch_intervals(args):
     from trailtraining.pipelines import intervals
-    _run(lambda: intervals.main(
-        oldest=getattr(args, "oldest", None),
-        newest=getattr(args, "newest", None),
-    ))
+
+    _run(
+        lambda: intervals.main(
+            oldest=getattr(args, "oldest", None),
+            newest=getattr(args, "newest", None),
+        )
+    )
 
 
 def cmd_run_all_intervals(args):
     from trailtraining.pipelines import run_all_intervals
-    _run(lambda: run_all_intervals.main(
-        clean=getattr(args, "clean", False),
-        clean_processing=getattr(args, "clean_processing", False),
-        clean_prompting=getattr(args, "clean_prompting", False),
-    ))
+
+    _run(
+        lambda: run_all_intervals.main(
+            clean=getattr(args, "clean", False),
+            clean_processing=getattr(args, "clean_processing", False),
+            clean_prompting=getattr(args, "clean_prompting", False),
+        )
+    )
+
+
+def _detect_provider_for_doctor() -> str:
+    # Prefer explicit env var, otherwise auto.
+    env_v = (
+        (os.getenv("TRAILTRAINING_WELLNESS_PROVIDER") or "").strip()
+        or (os.getenv("WELLNESS_PROVIDER") or "").strip()
+    )
+    v = env_v.lower() if env_v else "auto"
+    if v in {"garmin", "intervals"}:
+        return v
+
+    # auto-detect
+    from trailtraining import config
+
+    if (config.INTERVALS_API_KEY or "").strip():
+        return "intervals"
+    if (config.GARMIN_EMAIL or "").strip() and (config.GARMIN_PASSWORD or "").strip():
+        return "garmin"
+    return "intervals"
+
+
+def cmd_doctor(_args):
+    from trailtraining import config
+    from trailtraining.data.strava import default_token_path
+
+    def ok(label: str, msg: str = "") -> None:
+        print(f"✅ {label}" + (f" — {msg}" if msg else ""))
+
+    def warn(label: str, msg: str = "") -> None:
+        print(f"⚠️  {label}" + (f" — {msg}" if msg else ""))
+
+    def bad(label: str, msg: str = "") -> None:
+        print(f"❌ {label}" + (f" — {msg}" if msg else ""))
+
+    print("TrailTraining doctor\n")
+
+    config.ensure_directories()
+    profile = os.getenv("TRAILTRAINING_PROFILE", "default")
+    base_dir = os.getenv("TRAILTRAINING_BASE_DIR", "")
+    ok("Profile", profile)
+    ok("Base dir", base_dir or "(not set)")
+
+    issues = 0
+
+    # ---- Strava ----
+    if config.STRAVA_ID and config.STRAVA_ID != 0:
+        ok("STRAVA_CLIENT_ID set")
+    else:
+        bad("STRAVA_CLIENT_ID missing", "Set STRAVA_CLIENT_ID in your profile env.")
+        issues += 1
+
+    if (config.STRAVA_SECRET or "").strip():
+        ok("STRAVA_CLIENT_SECRET set")
+    else:
+        bad("STRAVA_CLIENT_SECRET missing", "Set STRAVA_CLIENT_SECRET in your profile env.")
+        issues += 1
+
+    if (config.STRAVA_REDIRECT_URI or "").strip():
+        ok("STRAVA_REDIRECT_URI set", config.STRAVA_REDIRECT_URI)
+    else:
+        warn("STRAVA_REDIRECT_URI missing", "Default will be used, but set it explicitly to match your Strava app.")
+
+    token_path = default_token_path()
+    if token_path.exists():
+        ok("Strava token", str(token_path))
+    else:
+        warn("Strava token not found", f"Run: trailtraining --profile {profile} auth-strava")
+
+    # ---- Wellness provider ----
+    provider = _detect_provider_for_doctor()
+    ok("Wellness provider", provider)
+
+    if provider == "intervals":
+        if (config.INTERVALS_API_KEY or "").strip():
+            ok("INTERVALS_API_KEY set")
+        else:
+            bad("INTERVALS_API_KEY missing", "Set INTERVALS_API_KEY (or choose Garmin).")
+            issues += 1
+
+        athlete_id = (config.INTERVALS_ATHLETE_ID or "").strip()
+        if athlete_id:
+            ok("INTERVALS_ATHLETE_ID", athlete_id)
+        else:
+            warn("INTERVALS_ATHLETE_ID not set", "Default '0' may still work (current athlete).")
+
+    if provider == "garmin":
+        if (config.GARMIN_EMAIL or "").strip():
+            ok("GARMIN_EMAIL set")
+        else:
+            bad("GARMIN_EMAIL missing")
+            issues += 1
+
+        if (config.GARMIN_PASSWORD or "").strip():
+            ok("GARMIN_PASSWORD set")
+        else:
+            bad("GARMIN_PASSWORD missing")
+            issues += 1
+
+        script = os.environ.get("GARMINGDB_CLI") or shutil.which("garmindb_cli") or shutil.which("garmindb_cli.py")
+        if script:
+            ok("GarminDb CLI found", script)
+        else:
+            bad("GarminDb CLI missing", "Install GarminDb and ensure garmindb_cli is on PATH (or set GARMINGDB_CLI).")
+            issues += 1
+
+    # ---- Optional OpenAI ----
+    if os.getenv("OPENAI_API_KEY") or os.getenv("TRAILTRAINING_OPENAI_API_KEY"):
+        ok("OpenAI API key set (coach enabled)")
+    else:
+        warn("OpenAI API key not set", "Coach won’t run until you set OPENAI_API_KEY (recommended).")
+
+    print("\nSummary:")
+    if issues:
+        bad("Doctor found issues", f"{issues} blocking issue(s).")
+        raise SystemExit(1)
+
+    ok("Doctor OK", "No blocking issues found.")
+    raise SystemExit(0)
 
 
 def cmd_coach(args):
@@ -136,45 +292,65 @@ def main(argv=None):
         default=os.getenv("TRAILTRAINING_PROFILE", "default"),
         help="Profile name (loads ~/.trailtraining/profiles/<profile>.env and isolates data dirs).",
     )
+    parser.add_argument(
+        "--log-level",
+        default=((os.getenv("TRAILTRAINING_LOG_LEVEL") or "INFO").upper()),
+        choices=["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"],
+        help="Logging verbosity (or set TRAILTRAINING_LOG_LEVEL).",
+    )
 
     sub = parser.add_subparsers(dest="command", required=True)
+
+    sub.add_parser("doctor", help="Check configuration + dependencies").set_defaults(func=cmd_doctor)
 
     sub.add_parser("auth-strava", help="Run Strava auth flow (opens local server)").set_defaults(func=cmd_auth_strava)
     sub.add_parser("fetch-strava", help="Fetch activities from Strava").set_defaults(func=cmd_fetch_strava)
     sub.add_parser("fetch-garmin", help="Fetch/process data from Garmin").set_defaults(func=cmd_fetch_garmin)
     sub.add_parser("combine", help="Combine Garmin + Strava JSONs").set_defaults(func=cmd_combine)
 
-    run_all_p = sub.add_parser("run-all", help="Run full pipeline (Garmin → Strava → Combine)")
-    run_all_p.add_argument("--clean", action="store_true",
-                           help="Delete files in BOTH processing/ and prompting/ before running (disables incremental Strava).")
-    run_all_p.add_argument("--clean-processing", action="store_true",
-                           help="Delete files in processing/ before running (disables incremental Strava).")
-    run_all_p.add_argument("--clean-prompting", action="store_true",
-                           help="Delete files in prompting/ before running.")
+    run_all_p = sub.add_parser("run-all", help="Run full pipeline (auto: Garmin OR Intervals → Strava → Combine)")
+    run_all_p.add_argument(
+        "--clean",
+        action="store_true",
+        help="Delete files in BOTH processing/ and prompting/ before running (disables incremental Strava).",
+    )
+    run_all_p.add_argument(
+        "--clean-processing",
+        action="store_true",
+        help="Delete files in processing/ before running (disables incremental Strava).",
+    )
+    run_all_p.add_argument("--clean-prompting", action="store_true", help="Delete files in prompting/ before running.")
+    run_all_p.add_argument(
+        "--wellness-provider",
+        default=None,
+        choices=["auto", "garmin", "intervals"],
+        help="Override wellness provider (default: env TRAILTRAINING_WELLNESS_PROVIDER/WELLNESS_PROVIDER or auto).",
+    )
     run_all_p.set_defaults(func=cmd_run_all)
 
     # coach
     coach_p = sub.add_parser("coach", help="LLM coach analysis on combined_summary.json + formatted_personal_data.json")
     coach_p.add_argument("--prompt", default="training-plan", choices=["training-plan", "recovery-status", "meal-plan"])
     coach_p.add_argument("--model", default=os.getenv("TRAILTRAINING_LLM_MODEL", "gpt-5.2"))
-    coach_p.add_argument("--reasoning-effort", default=os.getenv("TRAILTRAINING_REASONING_EFFORT", "medium"),
-                         choices=["none", "low", "medium", "high", "xhigh"])
-    coach_p.add_argument("--verbosity", default=os.getenv("TRAILTRAINING_VERBOSITY", "medium"),
-                         choices=["low", "medium", "high"])
-    coach_p.add_argument("--temperature", type=float, default=None,
-                         help="Only used if --reasoning-effort none (API restriction).")
+    coach_p.add_argument(
+        "--reasoning-effort",
+        default=os.getenv("TRAILTRAINING_REASONING_EFFORT", "medium"),
+        choices=["none", "low", "medium", "high", "xhigh"],
+    )
+    coach_p.add_argument("--verbosity", default=os.getenv("TRAILTRAINING_VERBOSITY", "medium"), choices=["low", "medium", "high"])
+    coach_p.add_argument("--temperature", type=float, default=None, help="Only used if --reasoning-effort none (API restriction).")
     coach_p.add_argument("--days", type=int, default=int(os.getenv("TRAILTRAINING_COACH_DAYS", "60")))
     coach_p.add_argument("--max-chars", type=int, default=int(os.getenv("TRAILTRAINING_COACH_MAX_CHARS", "200000")))
-    coach_p.add_argument("--output", default=None,
-                         help="Output markdown file. Default: <prompting_dir>/coach_brief_<prompt>.md")
-    coach_p.add_argument("--input", default=None,
-                         help="Directory containing the two JSON files. Default: prompting directory")
-    coach_p.add_argument("--personal", default=None,
-                         help="Explicit path to formatted_personal_data.json (overrides --input)")
-    coach_p.add_argument("--summary", default=None,
-                         help="Explicit path to combined_summary.json (overrides --input)")
+    coach_p.add_argument(
+        "--output",
+        default=None,
+        help="Output markdown file. Default: <prompting_dir>/coach_brief_<prompt>.md",
+    )
+    coach_p.add_argument("--input", default=None, help="Directory containing the two JSON files. Default: prompting directory")
+    coach_p.add_argument("--personal", default=None, help="Explicit path to formatted_personal_data.json (overrides --input)")
+    coach_p.add_argument("--summary", default=None, help="Explicit path to combined_summary.json (overrides --input)")
 
-    # NEW: style preset (affects system instructions + training-plan prompt only)
+    # style preset
     coach_p.add_argument(
         "--style",
         default=os.getenv("TRAILTRAINING_COACH_STYLE", "trailrunning"),
@@ -186,25 +362,32 @@ def main(argv=None):
 
     # intervals
     intervals_p = sub.add_parser("fetch-intervals", help="Fetch sleep + resting HR from Intervals.icu")
-    intervals_p.add_argument("--script", default=None,
-                             help="(deprecated) Old node script path. Ignored; Python Intervals fetch is used.")
+    intervals_p.add_argument("--script", default=None, help="(deprecated) Old node script path. Ignored; Python Intervals fetch is used.")
     intervals_p.add_argument("--oldest", default=None, help="YYYY-MM-DD (default: lookback window)")
     intervals_p.add_argument("--newest", default=None, help="YYYY-MM-DD (default: today)")
     intervals_p.set_defaults(func=cmd_fetch_intervals)
 
     run_all_int_p = sub.add_parser("run-all-intervals", help="Run full pipeline (Intervals → Strava → Combine)")
-    run_all_int_p.add_argument("--clean", action="store_true",
-                               help="Delete files in BOTH processing/ and prompting/ before running (disables incremental Strava).")
-    run_all_int_p.add_argument("--clean-processing", action="store_true",
-                               help="Delete files in processing/ before running (disables incremental Strava).")
-    run_all_int_p.add_argument("--clean-prompting", action="store_true",
-                               help="Delete files in prompting/ before running.")
+    run_all_int_p.add_argument(
+        "--clean",
+        action="store_true",
+        help="Delete files in BOTH processing/ and prompting/ before running (disables incremental Strava).",
+    )
+    run_all_int_p.add_argument(
+        "--clean-processing",
+        action="store_true",
+        help="Delete files in processing/ before running (disables incremental Strava).",
+    )
+    run_all_int_p.add_argument("--clean-prompting", action="store_true", help="Delete files in prompting/ before running.")
     run_all_int_p.set_defaults(func=cmd_run_all_intervals)
 
     args = parser.parse_args(argv)
 
     # Apply profile BEFORE running command imports
     apply_profile(args.profile)
+
+    # Configure logging AFTER profile loads (so env-based defaults are present)
+    configure_logging(args.log_level)
 
     args.func(args)
 
