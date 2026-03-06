@@ -400,6 +400,3 @@ trailtraining run-all-intervals -h
 
 trailtraining coach -h
 ```
-
-```
-```
