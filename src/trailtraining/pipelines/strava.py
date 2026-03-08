@@ -25,7 +25,6 @@ from trailtraining.data.strava import (
 )
 from trailtraining.util.state import load_json, save_json
 from trailtraining.web.auth_server import start_auth_server, wait_for_code
-import logging
 
 STRAVA_API_BASE = "https://www.strava.com/api/v3"
 ACTIVITIES_PATH = "/athlete/activities"

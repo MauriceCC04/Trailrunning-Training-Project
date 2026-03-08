@@ -1,5 +1,10 @@
-def test_imports():
-    import trailtraining.cli  # noqa: F401
-    import trailtraining.config  # noqa: F401
-    import trailtraining.pipelines.intervals  # noqa: F401
-    import trailtraining.data.combine  # noqa: F401
+import importlib
+
+def test_imports() -> None:
+    for mod in (
+        "trailtraining.cli",
+        "trailtraining.config",
+        "trailtraining.pipelines.intervals",
+        "trailtraining.data.combine",
+    ):
+        importlib.import_module(mod)

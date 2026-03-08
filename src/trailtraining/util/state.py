@@ -6,7 +6,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Union
 
 PathLike = Union[str, Path]
 
