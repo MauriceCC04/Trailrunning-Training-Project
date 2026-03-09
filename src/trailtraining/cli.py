@@ -280,23 +280,61 @@ def cmd_coach(args):
 
 def cmd_eval_coach(args):
     """
-    Evaluate a coach training-plan JSON output against simple constraints.
+    Evaluate a coach training-plan JSON output against constraints + quality scoring.
     """
     from trailtraining.llm.constraints import ConstraintConfig
-    from trailtraining.llm.eval import evaluate_training_plan_file
-    from trailtraining.util.state import save_json
     from trailtraining.llm.eval import evaluate_training_plan_quality_file
+    from trailtraining.util.state import save_json
+
+    cfg = ConstraintConfig(
+        max_ramp_pct=float(args.max_ramp_pct),
+        max_consecutive_hard=int(args.max_consecutive_hard),
+    )
 
     report, _obj = evaluate_training_plan_quality_file(
         args.input,
         rollups_path=args.rollups,
         cfg=cfg,
     )
+    violations = report.get("violations", [])
 
-    print(f"Score: {report['score']}/100 ({report['grade']})")
-    if report.get("subscores"):
-        print("Subscores:", report["subscores"])
+    # Save outputs (keep --output behavior = violations JSON)
+    if args.output:
+        outp = Path(args.output).expanduser().resolve()
+        save_json(outp, violations, compact=False)
+        print(f"[Saved] {outp}")
 
+    # New: save full report
+    if getattr(args, "report", None):
+        outp = Path(args.report).expanduser().resolve()
+        save_json(outp, report, compact=False)
+        print(f"[Saved] {outp}")
+
+    score = report.get("score", 0)
+    grade = report.get("grade", "?")
+    print(f"Score: {score}/100 ({grade})")
+
+    subs = report.get("subscores", {}) or {}
+    if subs:
+        # stable ordering for readability
+        parts = [f"{k}={subs[k]}" for k in sorted(subs.keys())]
+        print("Subscores:", ", ".join(parts))
+
+    if not violations:
+        print("✅ eval-coach: no violations")
+        raise SystemExit(0)
+
+    print("⚠️  eval-coach violations:")
+    for v in violations:
+        sev = v.get("severity", "unknown")
+        code = v.get("code", "UNKNOWN")
+        msg = v.get("message", "")
+        print(f"- [{sev}] {code}: {msg}")
+
+    # Fail on any high severity (same behavior as before)
+    if any(v.get("severity") == "high" for v in violations):
+        raise SystemExit(1)
+    raise SystemExit(0)
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="trailtraining", description="TrailTraining CLI")
@@ -381,6 +419,7 @@ def main(argv=None):
     eval_p.add_argument("--max-ramp-pct", type=float, default=float(os.getenv("TRAILTRAINING_MAX_RAMP_PCT", "10")))
     eval_p.add_argument("--max-consecutive-hard", type=int, default=int(os.getenv("TRAILTRAINING_MAX_CONSEC_HARD", "2")))
     eval_p.add_argument("--output", default=None, help="Optional path to write violations JSON")
+    eval_p.add_argument("--report", default=None, help="Optional path to write full scoring report JSON")
     eval_p.set_defaults(func=cmd_eval_coach)
 
     # intervals

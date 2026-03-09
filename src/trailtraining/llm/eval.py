@@ -4,7 +4,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from trailtraining.llm.constraints import ConstraintConfig, validate_training_plan
+from trailtraining.llm.constraints import (
+    ConstraintConfig,
+    evaluate_training_plan_quality,
+    validate_training_plan,
+)
 from trailtraining.util.state import load_json
 
 
@@ -22,9 +26,25 @@ def _load_rollups_near(path: Path, explicit_rollups: Optional[str] = None) -> Op
     return None
 
 
-# src/trailtraining/llm/eval.py
-from trailtraining.llm.constraints import evaluate_training_plan_quality
-# (keep validate_training_plan import if you still use it elsewhere)
+def evaluate_training_plan_file(
+    coach_json_path: str,
+    *,
+    rollups_path: Optional[str] = None,
+    cfg: Optional[ConstraintConfig] = None,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """
+    Backwards compatible: returns (violations, obj)
+    """
+    p = Path(coach_json_path).expanduser().resolve()
+    obj = load_json(p, default=None)
+    if not isinstance(obj, dict):
+        raise ValueError("Coach JSON must be an object (dict).")
+
+    rollups = _load_rollups_near(p, rollups_path)
+    ccfg = cfg or ConstraintConfig()
+    violations = validate_training_plan(obj, rollups, ccfg)
+    return violations, obj
+
 
 def evaluate_training_plan_quality_file(
     coach_json_path: str,
@@ -32,6 +52,10 @@ def evaluate_training_plan_quality_file(
     rollups_path: Optional[str] = None,
     cfg: Optional[ConstraintConfig] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    New: returns (report, obj)
+    report includes score/grade/subscores/stats/violations
+    """
     p = Path(coach_json_path).expanduser().resolve()
     obj = load_json(p, default=None)
     if not isinstance(obj, dict):
