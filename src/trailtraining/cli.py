@@ -340,6 +340,12 @@ def cmd_eval_coach(args):
         raise SystemExit(1)
     raise SystemExit(0)
 
+def cmd_forecast(args):
+    from trailtraining.forecast.forecast import run_forecasts
+    r = run_forecasts(input_dir=args.input, output_path=args.output)
+    print(f"[Saved] {r['saved']}")
+    print(r["result"])
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="trailtraining", description="TrailTraining CLI")
 
@@ -446,6 +452,13 @@ def main(argv=None):
     )
     run_all_int_p.add_argument("--clean-prompting", action="store_true", help="Delete files in prompting/ before running.")
     run_all_int_p.set_defaults(func=cmd_run_all_intervals)
+
+    forecast_p = sub.add_parser("forecast", help="Readiness forecast + overreach risk (from combined_summary.json)")
+    forecast_p.add_argument("--input", default=None,
+                            help="Directory containing combined_summary.json (default: prompting dir)")
+    forecast_p.add_argument("--output", default=None,
+                            help="Output JSON path (default: <input>/readiness_and_risk_forecast.json)")
+    forecast_p.set_defaults(func=cmd_forecast)
 
     args = parser.parse_args(argv)
 
