@@ -182,7 +182,149 @@ def _extract_json_object(text: str) -> str:
     if start != -1 and end != -1 and end > start:
         return text[start : end + 1]
     return text
+def training_plan_to_text(obj: Dict[str, Any]) -> str:
+    """
+    Convert a training-plan JSON object into a simple, human-readable text plan.
+    Output is intended to be saved as a .txt file alongside the JSON.
+    """
+    meta = obj.get("meta") if isinstance(obj.get("meta"), dict) else {}
+    readiness = obj.get("readiness") if isinstance(obj.get("readiness"), dict) else {}
+    plan = obj.get("plan") if isinstance(obj.get("plan"), dict) else {}
+    weekly = plan.get("weekly_totals") if isinstance(plan.get("weekly_totals"), dict) else {}
+    days = plan.get("days") if isinstance(plan.get("days"), list) else []
 
+    def _fmt_weekday(ds: str) -> str:
+        if not isinstance(ds, str):
+            return ""
+        try:
+            return date.fromisoformat(ds).strftime("%a")
+        except Exception:
+            return ""
+
+    def _safe_str(x: Any) -> str:
+        return x.strip() if isinstance(x, str) else ""
+
+    def _safe_num(x: Any) -> Optional[float]:
+        return float(x) if isinstance(x, (int, float)) else None
+
+    # Sort days by ISO date if possible
+    def _day_key(d: Dict[str, Any]) -> str:
+        ds = d.get("date")
+        return ds if isinstance(ds, str) else "9999-99-99"
+
+    day_objs = [d for d in days if isinstance(d, dict)]
+    day_objs.sort(key=_day_key)
+
+    lines: List[str] = []
+    lines.append("TrailTraining — Training Plan")
+    lines.append("")
+
+    # Meta
+    plan_start = _safe_str(meta.get("plan_start"))
+    plan_days = meta.get("plan_days")
+    style = _safe_str(meta.get("style"))
+    today = _safe_str(meta.get("today"))
+
+    if today:
+        lines.append(f"Generated: {today}")
+    if plan_start or plan_days:
+        lines.append(f"Plan start: {plan_start or '(unknown)'}   Days: {plan_days if plan_days is not None else '(unknown)'}")
+    if style:
+        lines.append(f"Style: {style}")
+
+    # Readiness
+    status = _safe_str(readiness.get("status"))
+    rationale = _safe_str(readiness.get("rationale"))
+    if status or rationale:
+        lines.append("")
+        if status:
+            lines.append(f"Readiness: {status}")
+        if rationale:
+            lines.append(f"Why: {rationale}")
+
+    # Weekly totals (best-effort)
+    dist_km = _safe_num(weekly.get("planned_distance_km"))
+    hours = _safe_num(weekly.get("planned_moving_time_hours"))
+    elev_m = _safe_num(weekly.get("planned_elevation_m"))
+    if dist_km is not None or hours is not None or elev_m is not None:
+        parts: List[str] = []
+        if hours is not None:
+            parts.append(f"{hours:.1f} h")
+        if dist_km is not None and dist_km > 0:
+            parts.append(f"{dist_km:.0f} km")
+        if elev_m is not None and elev_m > 0:
+            parts.append(f"{elev_m:.0f} m+")
+        if parts:
+            lines.append("")
+            lines.append("Weekly totals: " + " • ".join(parts))
+
+    # Day-by-day
+    lines.append("")
+    lines.append("Day-by-day")
+    lines.append("-" * 10)
+
+    for d in day_objs:
+        ds = _safe_str(d.get("date"))
+        wd = _fmt_weekday(ds)
+        title = _safe_str(d.get("title")) or "(no title)"
+        session_type = _safe_str(d.get("session_type"))
+        is_rest = bool(d.get("is_rest_day"))
+        is_hard = bool(d.get("is_hard_day"))
+        mins = d.get("duration_minutes")
+        dur = f"{mins} min" if isinstance(mins, (int, float)) else "?"
+
+        tag_parts: List[str] = []
+        if is_rest:
+            tag_parts.append("REST")
+        elif session_type:
+            tag_parts.append(session_type.upper())
+        if is_hard and not is_rest:
+            tag_parts.append("HARD")
+        tag = ", ".join(tag_parts) if tag_parts else "SESSION"
+
+        date_label = f"{wd} {ds}".strip() if wd or ds else "(unknown date)"
+        lines.append(f"{date_label}: {title} ({tag}, {dur})")
+
+        target_intensity = _safe_str(d.get("target_intensity"))
+        terrain = _safe_str(d.get("terrain"))
+        workout = _safe_str(d.get("workout"))
+        purpose = _safe_str(d.get("purpose"))
+
+        if target_intensity:
+            lines.append(f"  Intensity: {target_intensity}")
+        if terrain:
+            lines.append(f"  Terrain: {terrain}")
+        if workout:
+            lines.append(f"  Workout: {workout}")
+        if purpose:
+            lines.append(f"  Purpose: {purpose}")
+
+        lines.append("")
+
+    # Recovery actions
+    rec = obj.get("recovery") if isinstance(obj.get("recovery"), dict) else {}
+    actions = rec.get("actions") if isinstance(rec.get("actions"), list) else []
+    actions = [a for a in actions if isinstance(a, str) and a.strip()]
+    if actions:
+        lines.append("Recovery focus")
+        lines.append("-" * 14)
+        for a in actions:
+            lines.append(f"- {a.strip()}")
+        lines.append("")
+
+    # Risks
+    risks = obj.get("risks") if isinstance(obj.get("risks"), list) else []
+    risks = [r for r in risks if isinstance(r, dict)]
+    if risks:
+        lines.append("Risks / cautions")
+        lines.append("-" * 15)
+        for r in risks:
+            sev = _safe_str(r.get("severity")) or "unknown"
+            msg = _safe_str(r.get("message")) or "(no message)"
+            lines.append(f"- [{sev}] {msg}")
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
 
 def _call_responses_best_effort_schema(client: OpenAI, kwargs: Dict[str, Any], schema: Dict[str, Any]) -> Any:
     """
@@ -336,6 +478,31 @@ class CoachConfig:
     # prompt preset (per-profile default via env; CLI can override)
     style: str = os.getenv("TRAILTRAINING_COACH_STYLE", "trailrunning")
 
+def _recompute_planned_hours_from_days(obj: Dict[str, Any]) -> None:
+    """
+    Make weekly_totals.planned_moving_time_hours consistent with sum(plan.days[].duration_minutes).
+    This prevents false MAX_RAMP_PCT violations caused by rounding / inconsistent totals.
+    """
+    plan = obj.get("plan")
+    if not isinstance(plan, dict):
+        return
+    days = plan.get("days")
+    if not isinstance(days, list):
+        return
+
+    total_min = 0.0
+    for d in days:
+        if not isinstance(d, dict):
+            continue
+        m = d.get("duration_minutes")
+        if isinstance(m, (int, float)):
+            total_min += float(m)
+
+    wt = plan.get("weekly_totals")
+    if not isinstance(wt, dict):
+        return
+
+    wt["planned_moving_time_hours"] = round(total_min / 60.0, 1)
 
 def run_coach_brief(
     *,
@@ -413,6 +580,7 @@ def run_coach_brief(
         try:
             obj = json.loads(raw)
             obj = ensure_training_plan_shape(obj)
+            _recompute_planned_hours_from_days(obj)
         except Exception as e:
             log.warning("Training-plan JSON parse/shape failed; attempting one repair pass: %s", e)
             repair_prompt = (
@@ -441,6 +609,12 @@ def run_coach_brief(
 
         out_p.parent.mkdir(parents=True, exist_ok=True)
         save_json(out_p, obj, compact=False)
+        # Also write a human-readable interpretation (.txt) next to the JSON
+        try:
+            txt_p = out_p.parent / f"{out_p.stem}.txt"
+            txt_p.write_text(training_plan_to_text(obj), encoding="utf-8")
+        except Exception as e:
+            log.warning("Failed to write training-plan text interpretation: %s", e)
         pretty = json.dumps(obj, indent=2, ensure_ascii=False)
         return pretty, str(out_p)
 

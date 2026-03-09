@@ -276,7 +276,11 @@ def cmd_coach(args):
     print(text)
     if out_path:
         print(f"\n[Saved] {out_path}")
-
+        if args.prompt == "training-plan":
+            p = Path(out_path)
+            txt_p = p.parent / f"{p.stem}.txt"
+            if txt_p.exists():
+                print(f"[Saved] {txt_p}")
 
 def cmd_eval_coach(args):
     """
