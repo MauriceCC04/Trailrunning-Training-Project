@@ -22,12 +22,16 @@ def _load_rollups_near(path: Path, explicit_rollups: Optional[str] = None) -> Op
     return None
 
 
-def evaluate_training_plan_file(
+# src/trailtraining/llm/eval.py
+from trailtraining.llm.constraints import evaluate_training_plan_quality
+# (keep validate_training_plan import if you still use it elsewhere)
+
+def evaluate_training_plan_quality_file(
     coach_json_path: str,
     *,
     rollups_path: Optional[str] = None,
     cfg: Optional[ConstraintConfig] = None,
-) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     p = Path(coach_json_path).expanduser().resolve()
     obj = load_json(p, default=None)
     if not isinstance(obj, dict):
@@ -35,5 +39,5 @@ def evaluate_training_plan_file(
 
     rollups = _load_rollups_near(p, rollups_path)
     ccfg = cfg or ConstraintConfig()
-    violations = validate_training_plan(obj, rollups, ccfg)
-    return violations, obj
+    report = evaluate_training_plan_quality(obj, rollups, ccfg)
+    return report, obj

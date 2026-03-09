@@ -285,38 +285,17 @@ def cmd_eval_coach(args):
     from trailtraining.llm.constraints import ConstraintConfig
     from trailtraining.llm.eval import evaluate_training_plan_file
     from trailtraining.util.state import save_json
+    from trailtraining.llm.eval import evaluate_training_plan_quality_file
 
-    cfg = ConstraintConfig(
-        max_ramp_pct=float(args.max_ramp_pct),
-        max_consecutive_hard=int(args.max_consecutive_hard),
-    )
-
-    violations, _obj = evaluate_training_plan_file(
+    report, _obj = evaluate_training_plan_quality_file(
         args.input,
         rollups_path=args.rollups,
         cfg=cfg,
     )
 
-    if args.output:
-        outp = Path(args.output).expanduser().resolve()
-        save_json(outp, violations, compact=False)
-        print(f"[Saved] {outp}")
-
-    if not violations:
-        print("✅ eval-coach: no violations")
-        raise SystemExit(0)
-
-    print("⚠️  eval-coach violations:")
-    for v in violations:
-        sev = v.get("severity", "unknown")
-        code = v.get("code", "UNKNOWN")
-        msg = v.get("message", "")
-        print(f"- [{sev}] {code}: {msg}")
-
-    # Fail on any high severity
-    if any(v.get("severity") == "high" for v in violations):
-        raise SystemExit(1)
-    raise SystemExit(0)
+    print(f"Score: {report['score']}/100 ({report['grade']})")
+    if report.get("subscores"):
+        print("Subscores:", report["subscores"])
 
 
 def main(argv=None):
