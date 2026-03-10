@@ -1,4 +1,3 @@
-````markdown
 ### Trailrunning Training Project — User Guide
 
 This project pulls your **training + wellness** data (**GarminDb or Intervals.icu** + **Strava**), combines it into a clean dataset, and optionally runs an LLM “coach”.
