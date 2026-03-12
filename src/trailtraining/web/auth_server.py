@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from flask import Flask, request
+import logging
 import threading
 import time
-import logging
 from typing import Optional
+
+from flask import Flask, request
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

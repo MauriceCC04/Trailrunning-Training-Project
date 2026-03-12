@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
+
 from trailtraining.data.garmin import filter_sleep
+
 
 def test_garmin_filter_sleep_pure_python(tmp_path: Path):
     inp = tmp_path / "sleep.json"

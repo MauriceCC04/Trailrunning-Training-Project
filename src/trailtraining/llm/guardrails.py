@@ -24,14 +24,22 @@ def _get_cfg() -> ConstraintConfig:
     if os.getenv("TRAILTRAINING_MIN_REST_PER_7D"):
         cfg = replace(cfg, min_rest_per_7d=int(os.getenv("TRAILTRAINING_MIN_REST_PER_7D", "1")))
     if os.getenv("TRAILTRAINING_REST_DAY_MAX_MINUTES"):
-        cfg = replace(cfg, rest_day_max_minutes=int(os.getenv("TRAILTRAINING_REST_DAY_MAX_MINUTES", "30")))
+        cfg = replace(
+            cfg, rest_day_max_minutes=int(os.getenv("TRAILTRAINING_REST_DAY_MAX_MINUTES", "30"))
+        )
 
     return cfg
 
 
 def _get_last7_hours(rollups: Optional[Dict[str, Any]]) -> Optional[float]:
     try:
-        v = (rollups or {}).get("windows", {}).get("7", {}).get("activities", {}).get("total_moving_time_hours")
+        v = (
+            (rollups or {})
+            .get("windows", {})
+            .get("7", {})
+            .get("activities", {})
+            .get("total_moving_time_hours")
+        )
         return float(v) if isinstance(v, (int, float)) else None
     except Exception:
         return None
@@ -67,7 +75,7 @@ def _set_weekly_hours(plan_obj: Dict[str, Any]) -> float:
     total_min = _sum_minutes(first7)
     hours = total_min / 60.0
 
-    wt = ((plan_obj.get("plan") or {}).get("weekly_totals") or {})
+    wt = (plan_obj.get("plan") or {}).get("weekly_totals") or {}
     if isinstance(wt, dict):
         wt["planned_moving_time_hours"] = round(hours, 1)
 
@@ -226,7 +234,11 @@ def _enforce_max_consecutive_hard(days: List[Dict[str, Any]], max_consec: int) -
                 cand["is_hard_day"] = False
                 changed.append(str(cand.get("date") or ""))
                 # rebuild streak from the end
-                streak = [x for x in streak if bool(x.get("is_hard_day")) and not bool(x.get("is_rest_day"))]
+                streak = [
+                    x
+                    for x in streak
+                    if bool(x.get("is_hard_day")) and not bool(x.get("is_rest_day"))
+                ]
         else:
             streak = []
 
@@ -236,7 +248,9 @@ def _enforce_max_consecutive_hard(days: List[Dict[str, Any]], max_consec: int) -
 def build_eval_constraints_block(rollups: Optional[Dict[str, Any]]) -> str:
     cfg = _get_cfg()
     last7 = _get_last7_hours(rollups)
-    allowed = (last7 * (1.0 + cfg.max_ramp_pct / 100.0)) if isinstance(last7, (int, float)) else None
+    allowed = (
+        (last7 * (1.0 + cfg.max_ramp_pct / 100.0)) if isinstance(last7, (int, float)) else None
+    )
 
     lines = []
     if allowed is not None:
@@ -245,16 +259,28 @@ def build_eval_constraints_block(rollups: Optional[Dict[str, Any]]) -> str:
             f"(last7={last7:.2f}h, max_ramp_pct={cfg.max_ramp_pct:.1f}%)."
         )
     else:
-        lines.append(f"- MAX_RAMP_PCT: max_ramp_pct={cfg.max_ramp_pct:.1f}% (rollups last7 hours unavailable; be conservative).")
+        lines.append(
+            f"- MAX_RAMP_PCT: max_ramp_pct={cfg.max_ramp_pct:.1f}% (rollups last7 hours unavailable; be conservative)."
+        )
 
-    lines.append(f"- TOO_MANY_CONSEC_HARD: NEVER exceed {cfg.max_consecutive_hard} consecutive hard days.")
-    lines.append(f"- TOO_MANY_HARD_PER_WEEK: hard days in any 7-day chunk MUST be <= {cfg.max_hard_per_7d}.")
-    lines.append(f"- NOT_ENOUGH_REST: rest days in any 7-day chunk MUST be >= {cfg.min_rest_per_7d}.")
-    lines.append("- Definition: set is_hard_day=true ONLY for high-intensity sessions (intervals/tempo/hills). Long EASY aerobic should usually be is_hard_day=false.")
+    lines.append(
+        f"- TOO_MANY_CONSEC_HARD: NEVER exceed {cfg.max_consecutive_hard} consecutive hard days."
+    )
+    lines.append(
+        f"- TOO_MANY_HARD_PER_WEEK: hard days in any 7-day chunk MUST be <= {cfg.max_hard_per_7d}."
+    )
+    lines.append(
+        f"- NOT_ENOUGH_REST: rest days in any 7-day chunk MUST be >= {cfg.min_rest_per_7d}."
+    )
+    lines.append(
+        "- Definition: set is_hard_day=true ONLY for high-intensity sessions (intervals/tempo/hills). Long EASY aerobic should usually be is_hard_day=false."
+    )
     return "\n".join(lines)
 
 
-def apply_eval_coach_guardrails(plan_obj: Dict[str, Any], rollups: Optional[Dict[str, Any]]) -> None:
+def apply_eval_coach_guardrails(
+    plan_obj: Dict[str, Any], rollups: Optional[Dict[str, Any]]
+) -> None:
     """
     Mutates plan_obj in-place so it passes eval-coach safety constraints:
       - MAX_RAMP_PCT
@@ -297,7 +323,12 @@ def apply_eval_coach_guardrails(plan_obj: Dict[str, Any], rollups: Optional[Dict
             # If we couldn't reduce enough, fall back to setting the longest non-rest day to an easy/rest cap
             if leftover > 0:
                 # Try one more aggressive adjustment
-                non_rest = [d for d in wk if not bool(d.get("is_rest_day")) and isinstance(d.get("duration_minutes"), (int, float))]
+                non_rest = [
+                    d
+                    for d in wk
+                    if not bool(d.get("is_rest_day"))
+                    and isinstance(d.get("duration_minutes"), (int, float))
+                ]
                 if non_rest:
                     longest = max(non_rest, key=lambda d: float(d.get("duration_minutes", 0)))
                     min_i = _min_minutes_for_day(longest)
@@ -308,7 +339,7 @@ def apply_eval_coach_guardrails(plan_obj: Dict[str, Any], rollups: Optional[Dict
             _set_weekly_hours(plan_obj)
 
             # Scale weekly distance/elevation proportionally for coherence (optional but helpful)
-            wt = ((plan_obj.get("plan") or {}).get("weekly_totals") or {})
+            wt = (plan_obj.get("plan") or {}).get("weekly_totals") or {}
             if isinstance(wt, dict):
                 old_hours = cur_min / 60.0 if cur_min > 0 else None
                 new_hours = _planned_hours_from_obj(plan_obj)
@@ -323,9 +354,13 @@ def apply_eval_coach_guardrails(plan_obj: Dict[str, Any], rollups: Optional[Dict
     notes = plan_obj.get("data_notes")
     if isinstance(notes, list):
         if changed_hard_week:
-            notes.append(f"Guardrails: set is_hard_day=false on {changed_hard_week} to satisfy max_hard_per_7d={cfg.max_hard_per_7d}.")
+            notes.append(
+                f"Guardrails: set is_hard_day=false on {changed_hard_week} to satisfy max_hard_per_7d={cfg.max_hard_per_7d}."
+            )
         if changed_hard_consec:
-            notes.append(f"Guardrails: adjusted hard-day streak on {changed_hard_consec} to satisfy max_consecutive_hard={cfg.max_consecutive_hard}.")
+            notes.append(
+                f"Guardrails: adjusted hard-day streak on {changed_hard_consec} to satisfy max_consecutive_hard={cfg.max_consecutive_hard}."
+            )
 
         # Ramp note (always include if rollups known)
         if isinstance(last7, (int, float)) and last7 > 0:
@@ -339,6 +374,6 @@ def apply_eval_coach_guardrails(plan_obj: Dict[str, Any], rollups: Optional[Dict
 
 
 def _planned_hours_from_obj(plan_obj: Dict[str, Any]) -> Optional[float]:
-    wt = ((plan_obj.get("plan") or {}).get("weekly_totals") or {})
+    wt = (plan_obj.get("plan") or {}).get("weekly_totals") or {}
     v = wt.get("planned_moving_time_hours")
     return float(v) if isinstance(v, (int, float)) else None

@@ -2,13 +2,14 @@
 """
 Pipeline script to run all garmin data processing steps in order.
 """
-from trailtraining.data import garmin as garmin_processing
-from trailtraining.pipelines import download_garmin_data
 
 import os
 import shutil
 import subprocess
 import sys
+
+from trailtraining.data import garmin as garmin_processing
+from trailtraining.pipelines import download_garmin_data
 
 
 def main():

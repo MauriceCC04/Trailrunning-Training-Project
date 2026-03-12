@@ -42,7 +42,7 @@ def _std(xs: List[float]) -> Optional[float]:
         return None
     m = sum(xs2) / len(xs2)
     var = sum((x - m) ** 2 for x in xs2) / (len(xs2) - 1)
-    return var ** 0.5
+    return var**0.5
 
 
 def _clamp(x: float, lo: float, hi: float) -> float:
@@ -180,7 +180,9 @@ def compute_readiness_and_risk(
             if delta_rhr > 0:
                 drivers_readiness.append(f"Resting HR is above 28d baseline by {delta_rhr:.2f} bpm")
             elif delta_rhr < 0:
-                drivers_readiness.append(f"Resting HR is below 28d baseline by {abs(delta_rhr):.2f} bpm")
+                drivers_readiness.append(
+                    f"Resting HR is below 28d baseline by {abs(delta_rhr):.2f} bpm"
+                )
 
     if z_load is not None and z_load > 0:
         readiness -= 8.0 * float(z_load)
@@ -225,9 +227,15 @@ def compute_readiness_and_risk(
         "rhr_delta_bpm": (round(delta_rhr, 2) if delta_rhr is not None else None),
         "rhr_z": (round(z_rhr, 3) if z_rhr is not None else None),
         "training_load_7d_hours": (round(float(last7_load), 3) if last7_load is not None else None),
-        "training_load_rolling7_mean_hours": (round(float(base7_mean), 3) if base7_mean is not None else None),
-        "training_load_rolling7_std_hours": (round(float(base7_std), 3) if base7_std is not None else None),
-        "training_load_delta_hours": (round(float(delta_load), 3) if delta_load is not None else None),
+        "training_load_rolling7_mean_hours": (
+            round(float(base7_mean), 3) if base7_mean is not None else None
+        ),
+        "training_load_rolling7_std_hours": (
+            round(float(base7_std), 3) if base7_std is not None else None
+        ),
+        "training_load_delta_hours": (
+            round(float(delta_load), 3) if delta_load is not None else None
+        ),
         "training_load_z": (round(z_load, 3) if z_load is not None else None),
         "notes": [
             "training_load_hours = sum(moving_time_hours * load_factor)",
@@ -246,14 +254,20 @@ def compute_readiness_and_risk(
     )
 
 
-def run_forecasts(input_dir: Optional[str] = None, output_path: Optional[str] = None) -> Dict[str, Any]:
+def run_forecasts(
+    input_dir: Optional[str] = None, output_path: Optional[str] = None
+) -> Dict[str, Any]:
     """
     CLI entrypoint used by: trailtraining forecast
     Writes readiness_and_risk_forecast.json by default.
     """
     config.ensure_directories()
 
-    base = Path(input_dir).expanduser().resolve() if input_dir else Path(config.PROMPTING_DIRECTORY).expanduser().resolve()
+    base = (
+        Path(input_dir).expanduser().resolve()
+        if input_dir
+        else Path(config.PROMPTING_DIRECTORY).expanduser().resolve()
+    )
     summary_p = base / "combined_summary.json"
     if not summary_p.exists():
         raise FileNotFoundError(f"Missing {summary_p}")
@@ -264,7 +278,11 @@ def run_forecasts(input_dir: Optional[str] = None, output_path: Optional[str] = 
 
     fr = compute_readiness_and_risk(combined)
 
-    outp = Path(output_path).expanduser().resolve() if output_path else (base / "readiness_and_risk_forecast.json")
+    outp = (
+        Path(output_path).expanduser().resolve()
+        if output_path
+        else (base / "readiness_and_risk_forecast.json")
+    )
     payload = {
         "generated_at": datetime.utcnow().isoformat() + "Z",
         "result": {

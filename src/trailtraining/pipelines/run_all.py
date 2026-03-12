@@ -36,10 +36,9 @@ def _detect_provider(explicit: Optional[str] = None) -> str:
     if explicit:
         v = explicit.strip().lower()
     else:
-        env_v = (
-            (os.getenv("TRAILTRAINING_WELLNESS_PROVIDER") or "").strip()
-            or (os.getenv("WELLNESS_PROVIDER") or "").strip()
-        )
+        env_v = (os.getenv("TRAILTRAINING_WELLNESS_PROVIDER") or "").strip() or (
+            os.getenv("WELLNESS_PROVIDER") or ""
+        ).strip()
         v = env_v.lower() if env_v else "auto"
 
     if v in {"garmin", "intervals"}:

@@ -44,11 +44,13 @@ def _auth_headers() -> Dict[str, str]:
 
     import base64
 
-    basic = base64.b64encode(f"API_KEY:{api_key}".encode("utf-8")).decode("ascii")
+    basic = base64.b64encode(f"API_KEY:{api_key}".encode()).decode("ascii")
     return {"Authorization": f"Basic {basic}"}
 
 
-def _request_with_retry(session: requests.Session, method: str, url: str, **kwargs) -> requests.Response:
+def _request_with_retry(
+    session: requests.Session, method: str, url: str, **kwargs
+) -> requests.Response:
     """
     Retries on:
       - 429 (rate limit): uses Retry-After when present
@@ -82,7 +84,9 @@ def _request_with_retry(session: requests.Session, method: str, url: str, **kwar
 
 
 def fetch_wellness(oldest: str, newest: str) -> List[Dict[str, Any]]:
-    athlete_id = (os.getenv("INTERVALS_ATHLETE_ID") or getattr(config, "INTERVALS_ATHLETE_ID", "0")).strip() or "0"
+    athlete_id = (
+        os.getenv("INTERVALS_ATHLETE_ID") or getattr(config, "INTERVALS_ATHLETE_ID", "0")
+    ).strip() or "0"
     url = f"{BASE_URL}/athlete/{athlete_id}/wellness"
     params = {"oldest": oldest, "newest": newest}
 
@@ -97,10 +101,14 @@ def fetch_wellness(oldest: str, newest: str) -> List[Dict[str, Any]]:
     try:
         data = resp.json()
     except Exception as e:
-        raise RuntimeError(f"Intervals wellness JSON parse failed: {e}. HTTP {resp.status_code}: {resp.text[:500]}")
+        raise RuntimeError(
+            f"Intervals wellness JSON parse failed: {e}. HTTP {resp.status_code}: {resp.text[:500]}"
+        )
 
     if not isinstance(data, list):
-        raise ValueError(f"Unexpected Intervals wellness response (expected list). Got: {type(data)}")
+        raise ValueError(
+            f"Unexpected Intervals wellness response (expected list). Got: {type(data)}"
+        )
     return data
 
 

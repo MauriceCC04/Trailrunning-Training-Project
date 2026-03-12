@@ -4,10 +4,10 @@ from __future__ import annotations
 import os
 import shutil
 from pathlib import Path
+from typing import Optional
 
 from trailtraining import config
 from trailtraining.data.strava import default_token_path
-from typing import Optional
 
 
 def _ok(label: str, msg: str = "") -> None:
@@ -65,7 +65,10 @@ def main() -> None:
     if config.STRAVA_REDIRECT_URI.strip():
         _ok("STRAVA_REDIRECT_URI set", config.STRAVA_REDIRECT_URI)
     else:
-        _warn("STRAVA_REDIRECT_URI missing", "Default will be used, but set it explicitly to match your Strava app.")
+        _warn(
+            "STRAVA_REDIRECT_URI missing",
+            "Default will be used, but set it explicitly to match your Strava app.",
+        )
 
     token_path = default_token_path()
     if token_path.exists():
@@ -84,7 +87,9 @@ def main() -> None:
             _bad("INTERVALS_API_KEY missing", "Set INTERVALS_API_KEY (or set provider to garmin).")
             issues += 1
 
-        athlete_id = (os.getenv("INTERVALS_ATHLETE_ID") or config.INTERVALS_ATHLETE_ID or "").strip()
+        athlete_id = (
+            os.getenv("INTERVALS_ATHLETE_ID") or config.INTERVALS_ATHLETE_ID or ""
+        ).strip()
         if athlete_id:
             _ok("INTERVALS_ATHLETE_ID", athlete_id)
         else:
@@ -111,11 +116,14 @@ def main() -> None:
         if script:
             _ok("GarminDb CLI found", script)
         else:
-            _bad("GarminDb CLI missing", "Install GarminDb and ensure garmindb_cli is on PATH (or set GARMINGDB_CLI).")
+            _bad(
+                "GarminDb CLI missing",
+                "Install GarminDb and ensure garmindb_cli is on PATH (or set GARMINGDB_CLI).",
+            )
             issues += 1
 
     # ---- Optional OpenAI ----
-    if (os.getenv("OPENAI_API_KEY") or os.getenv("TRAILTRAINING_OPENAI_API_KEY")):
+    if os.getenv("OPENAI_API_KEY") or os.getenv("TRAILTRAINING_OPENAI_API_KEY"):
         _ok("OpenAI API key set (coach enabled)")
     else:
         _warn("OpenAI API key not set", "Coach won’t run until you set OPENAI_API_KEY.")

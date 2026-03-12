@@ -85,7 +85,7 @@ def _normalize_days(plan_obj: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def _planned_week_hours(plan_obj: Dict[str, Any]) -> Optional[float]:
-    wt = ((plan_obj.get("plan") or {}).get("weekly_totals") or {})
+    wt = (plan_obj.get("plan") or {}).get("weekly_totals") or {}
     v = wt.get("planned_moving_time_hours")
     return float(v) if isinstance(v, (int, float)) else None
 
@@ -134,7 +134,11 @@ def validate_training_plan(
                     "high",
                     "safety",
                     f"Planned moving time ramps {inc:.1f}% vs last 7 days (max {cfg.max_ramp_pct:.1f}%).",
-                    details={"planned_hours": planned_hours, "last7_hours": last7_hours, "ramp_pct": inc},
+                    details={
+                        "planned_hours": planned_hours,
+                        "last7_hours": last7_hours,
+                        "ramp_pct": inc,
+                    },
                 )
             )
 
@@ -202,11 +206,27 @@ def evaluate_training_plan_quality(
         ds = d.get("date")
         dd = _as_date(ds)
         if not dd:
-            violations.append(_v("BAD_DATE", "low", "structure", "Day has invalid/missing date.", details={"date": ds}))
+            violations.append(
+                _v(
+                    "BAD_DATE",
+                    "low",
+                    "structure",
+                    "Day has invalid/missing date.",
+                    details={"date": ds},
+                )
+            )
             continue
 
         if dd in seen:
-            violations.append(_v("DUPLICATE_DATE", "high", "structure", "Duplicate date in plan.days.", details={"date": ds}))
+            violations.append(
+                _v(
+                    "DUPLICATE_DATE",
+                    "high",
+                    "structure",
+                    "Duplicate date in plan.days.",
+                    details={"date": ds},
+                )
+            )
         seen.add(dd)
 
         if prev and (dd - prev).days != 1:
@@ -234,7 +254,11 @@ def evaluate_training_plan_quality(
                     "structure",
                     f"weekly_totals.planned_moving_time_hours ({planned_hours:.1f}h) doesn't match "
                     f"sum(duration) ({sum_hours:.1f}h) within {cfg.weekly_time_tolerance_pct:.0f}%.",
-                    details={"planned_hours": planned_hours, "sum_hours_first7": sum_hours, "pct_diff": diff},
+                    details={
+                        "planned_hours": planned_hours,
+                        "sum_hours_first7": sum_hours,
+                        "pct_diff": diff,
+                    },
                 )
             )
 

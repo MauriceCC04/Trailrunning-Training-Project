@@ -5,6 +5,7 @@ import logging
 import os
 from typing import Optional
 
+
 def configure_logging(level: Optional[str] = None) -> None:
     """
     Central logging setup for the CLI.

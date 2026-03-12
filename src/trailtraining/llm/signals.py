@@ -165,7 +165,9 @@ def build_weekly_history(combined: List[Dict[str, Any]], *, weeks: int) -> List[
                 "moving_time_hours": round(float(b["moving_time_hours"]), 3),
                 "elevation_m": round(float(b["elevation_m"]), 1),
                 "training_load_hours": round(float(b["training_load_hours"]), 3),
-                "sleep_hours_mean": (round(_mean(b["sleep_hours"]), 2) if b["sleep_hours"] else None),
+                "sleep_hours_mean": (
+                    round(_mean(b["sleep_hours"]), 2) if b["sleep_hours"] else None
+                ),
                 "hrv_mean": (round(_mean(b["hrv"]), 2) if b["hrv"] else None),
                 "rhr_mean": (round(_mean(b["rhr"]), 2) if b["rhr"] else None),
                 "days_with_sleep": int(b["days_with_sleep"]),
@@ -174,7 +176,9 @@ def build_weekly_history(combined: List[Dict[str, Any]], *, weeks: int) -> List[
     return out
 
 
-def build_signal_registry(combined: List[Dict[str, Any]], rollups: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def build_signal_registry(
+    combined: List[Dict[str, Any]], rollups: Optional[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
     """
     Creates a citeable registry of signals. The coach must reference signal_ids from this list.
     """
@@ -187,7 +191,15 @@ def build_signal_registry(combined: List[Dict[str, Any]], rollups: Optional[Dict
     reg: List[Dict[str, Any]] = []
 
     def add(signal_id: str, value: Any, source: str, date_range: str, unit: str = "") -> None:
-        reg.append({"signal_id": signal_id, "value": value, "unit": unit, "source": source, "date_range": date_range})
+        reg.append(
+            {
+                "signal_id": signal_id,
+                "value": value,
+                "unit": unit,
+                "source": source,
+                "date_range": date_range,
+            }
+        )
 
     # Rollups (authoritative if present)
     try:
@@ -198,20 +210,80 @@ def build_signal_registry(combined: List[Dict[str, Any]], rollups: Optional[Dict
             if isinstance(w7, dict):
                 acts = w7.get("activities") if isinstance(w7.get("activities"), dict) else {}
                 dr = f"{w7.get('start_date')}..{w7.get('end_date')}"
-                add("load.last7.distance_km", acts.get("total_distance_km"), "combined_rollups.json:windows.7.activities.total_distance_km", dr, "km")
-                add("load.last7.moving_time_hours", acts.get("total_moving_time_hours"), "combined_rollups.json:windows.7.activities.total_moving_time_hours", dr, "h")
-                add("load.last7.elevation_m", acts.get("total_elevation_m"), "combined_rollups.json:windows.7.activities.total_elevation_m", dr, "m")
-                add("load.last7.training_load_hours", acts.get("total_training_load_hours"), "combined_rollups.json:windows.7.activities.total_training_load_hours", dr, "load_h")
-                add("load.last7.activity_count", acts.get("count"), "combined_rollups.json:windows.7.activities.count", dr, "")
-                add("load.last7.sleep_days_with_data", w7.get("sleep_days_with_data"), "combined_rollups.json:windows.7.sleep_days_with_data", dr, "days")
+                add(
+                    "load.last7.distance_km",
+                    acts.get("total_distance_km"),
+                    "combined_rollups.json:windows.7.activities.total_distance_km",
+                    dr,
+                    "km",
+                )
+                add(
+                    "load.last7.moving_time_hours",
+                    acts.get("total_moving_time_hours"),
+                    "combined_rollups.json:windows.7.activities.total_moving_time_hours",
+                    dr,
+                    "h",
+                )
+                add(
+                    "load.last7.elevation_m",
+                    acts.get("total_elevation_m"),
+                    "combined_rollups.json:windows.7.activities.total_elevation_m",
+                    dr,
+                    "m",
+                )
+                add(
+                    "load.last7.training_load_hours",
+                    acts.get("total_training_load_hours"),
+                    "combined_rollups.json:windows.7.activities.total_training_load_hours",
+                    dr,
+                    "load_h",
+                )
+                add(
+                    "load.last7.activity_count",
+                    acts.get("count"),
+                    "combined_rollups.json:windows.7.activities.count",
+                    dr,
+                    "",
+                )
+                add(
+                    "load.last7.sleep_days_with_data",
+                    w7.get("sleep_days_with_data"),
+                    "combined_rollups.json:windows.7.sleep_days_with_data",
+                    dr,
+                    "days",
+                )
 
             if isinstance(w28, dict):
                 acts = w28.get("activities") if isinstance(w28.get("activities"), dict) else {}
                 dr = f"{w28.get('start_date')}..{w28.get('end_date')}"
-                add("load.baseline28.distance_km", acts.get("total_distance_km"), "combined_rollups.json:windows.28.activities.total_distance_km", dr, "km")
-                add("load.baseline28.moving_time_hours", acts.get("total_moving_time_hours"), "combined_rollups.json:windows.28.activities.total_moving_time_hours", dr, "h")
-                add("load.baseline28.elevation_m", acts.get("total_elevation_m"), "combined_rollups.json:windows.28.activities.total_elevation_m", dr, "m")
-                add("load.baseline28.training_load_hours", acts.get("total_training_load_hours"), "combined_rollups.json:windows.28.activities.total_training_load_hours", dr, "load_h")
+                add(
+                    "load.baseline28.distance_km",
+                    acts.get("total_distance_km"),
+                    "combined_rollups.json:windows.28.activities.total_distance_km",
+                    dr,
+                    "km",
+                )
+                add(
+                    "load.baseline28.moving_time_hours",
+                    acts.get("total_moving_time_hours"),
+                    "combined_rollups.json:windows.28.activities.total_moving_time_hours",
+                    dr,
+                    "h",
+                )
+                add(
+                    "load.baseline28.elevation_m",
+                    acts.get("total_elevation_m"),
+                    "combined_rollups.json:windows.28.activities.total_elevation_m",
+                    dr,
+                    "m",
+                )
+                add(
+                    "load.baseline28.training_load_hours",
+                    acts.get("total_training_load_hours"),
+                    "combined_rollups.json:windows.28.activities.total_training_load_hours",
+                    dr,
+                    "load_h",
+                )
     except Exception:
         pass
 
@@ -233,8 +305,12 @@ def build_signal_registry(combined: List[Dict[str, Any]], rollups: Optional[Dict
 
     sleep7 = _mean([_sleep_hours(d) for d in w7_days if _sleep_hours(d) is not None])
     sleep28 = _mean([_sleep_hours(d) for d in w28_days if _sleep_hours(d) is not None])
-    hrv7 = _mean([float(v) for v in (_sleep_int(d, "avgOvernightHrv") for d in w7_days) if v is not None])
-    rhr7 = _mean([float(v) for v in (_sleep_int(d, "restingHeartRate") for d in w7_days) if v is not None])
+    hrv7 = _mean(
+        [float(v) for v in (_sleep_int(d, "avgOvernightHrv") for d in w7_days) if v is not None]
+    )
+    rhr7 = _mean(
+        [float(v) for v in (_sleep_int(d, "restingHeartRate") for d in w7_days) if v is not None]
+    )
 
     add(
         "recovery.last7.sleep_hours_mean",
@@ -276,5 +352,7 @@ def build_retrieval_context(
 ) -> Dict[str, Any]:
     return {
         "weekly_history": build_weekly_history(combined, weeks=retrieval_weeks),
-        "signal_registry": build_signal_registry(combined, rollups if isinstance(rollups, dict) else None),
+        "signal_registry": build_signal_registry(
+            combined, rollups if isinstance(rollups, dict) else None
+        ),
     }

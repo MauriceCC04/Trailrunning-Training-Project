@@ -44,7 +44,9 @@ MAX_PAGES = int(os.getenv("TRAILTRAINING_STRAVA_MAX_PAGES", "0"))
 HARD_MAX_PAGES = int(os.getenv("TRAILTRAINING_STRAVA_HARD_MAX_PAGES", "1000"))
 
 PER_PAGE = int(os.getenv("TRAILTRAINING_STRAVA_PER_PAGE", "200"))  # Strava max is 200
-AFTER_BUFFER_SECONDS = int(os.getenv("TRAILTRAINING_STRAVA_AFTER_BUFFER_SECONDS", str(7 * 24 * 3600)))  # 7 days
+AFTER_BUFFER_SECONDS = int(
+    os.getenv("TRAILTRAINING_STRAVA_AFTER_BUFFER_SECONDS", str(7 * 24 * 3600))
+)  # 7 days
 
 
 def _parse_strava_datetime(s: Optional[str]) -> Optional[datetime]:
@@ -62,7 +64,9 @@ def _parse_strava_datetime(s: Optional[str]) -> Optional[datetime]:
     return dt
 
 
-def _request_with_retry(session: requests.Session, method: str, url: str, **kwargs) -> requests.Response:
+def _request_with_retry(
+    session: requests.Session, method: str, url: str, **kwargs
+) -> requests.Response:
     """
     Retries on:
       - 429 (rate limit): uses Retry-After when present
@@ -94,7 +98,9 @@ def _request_with_retry(session: requests.Session, method: str, url: str, **kwar
     raise RuntimeError(f"HTTP request failed after retries: {method} {url} ({last_err})")
 
 
-def _api_get(session: requests.Session, path: str, access_token: str, params: Optional[Dict[str, Any]] = None) -> Any:
+def _api_get(
+    session: requests.Session, path: str, access_token: str, params: Optional[Dict[str, Any]] = None
+) -> Any:
     resp = _request_with_retry(
         session,
         "GET",
@@ -254,7 +260,9 @@ def fetch_activities_incremental(
     return out, info
 
 
-def _merge_by_id(existing: List[Dict[str, Any]], new_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _merge_by_id(
+    existing: List[Dict[str, Any]], new_items: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
     merged: Dict[str, Dict[str, Any]] = {}
     for a in existing:
         if a.get("id") is not None:
