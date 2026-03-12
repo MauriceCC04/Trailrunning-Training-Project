@@ -145,7 +145,6 @@ Output: A Coach Brief with:
 - Recovery recommendations
 - Risks/flags + Data notes (missing/-1 fields, dedup, rollup usage, assumptions)
 """,
-
     "recovery-status": """You are an endurance performance coach.
 Task: Analyze the athlete’s current recovery status using combined_summary.json (and combined_rollups.json / formatted_personal_data.json if present).
 
@@ -167,7 +166,6 @@ Output: A Coach Brief with:
 - Recovery actions for today/tonight (sleep, fueling, mobility)
 - Warnings (fatigue stacking, missing data, inconsistencies) + Data notes
 """,
-
     "meal-plan": """You are my endurance coach.
 Task: Create a 7-day meal plan to support training and recovery based on my recent training load and sleep/recovery data.
 

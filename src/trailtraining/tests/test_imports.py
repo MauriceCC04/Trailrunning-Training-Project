@@ -1,5 +1,6 @@
 import importlib
 
+
 def test_imports() -> None:
     for mod in (
         "trailtraining.cli",

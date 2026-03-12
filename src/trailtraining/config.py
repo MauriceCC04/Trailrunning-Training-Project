@@ -33,7 +33,7 @@ STRAVA_REDIRECT_URI = _env("STRAVA_REDIRECT_URI", "http://127.0.0.1:5000/authori
 GARMIN_EMAIL = _env("GARMIN_EMAIL", "")
 GARMIN_PASSWORD = _env("GARMIN_PASSWORD", "")
 
-#intervals:
+# intervals:
 # ---- Intervals.icu (wellness: sleep + HR) ----
 # Personal/single-user integration (Intervals Settings → API Access)
 INTERVALS_API_KEY = os.environ.get("INTERVALS_API_KEY", "")

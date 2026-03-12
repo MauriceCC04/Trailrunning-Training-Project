@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-
 _SNAPSHOT_KEYS = [
     "distance_km",
     "moving_time_hours",
@@ -13,6 +12,7 @@ _SNAPSHOT_KEYS = [
     "hrv_mean",
     "rhr_mean",
 ]
+
 
 def _snapshot_obj_schema() -> Dict[str, Any]:
     # OpenAI strict schema requires:
@@ -40,7 +40,16 @@ TRAINING_PLAN_SCHEMA: Dict[str, Any] = {
     "schema": {
         "type": "object",
         "additionalProperties": False,
-        "required": ["meta", "snapshot", "readiness", "plan", "recovery", "risks", "data_notes", "citations"],
+        "required": [
+            "meta",
+            "snapshot",
+            "readiness",
+            "plan",
+            "recovery",
+            "risks",
+            "data_notes",
+            "citations",
+        ],
         "properties": {
             "meta": {
                 "type": "object",
@@ -81,7 +90,11 @@ TRAINING_PLAN_SCHEMA: Dict[str, Any] = {
                     "weekly_totals": {
                         "type": "object",
                         "additionalProperties": False,
-                        "required": ["planned_distance_km", "planned_moving_time_hours", "planned_elevation_m"],
+                        "required": [
+                            "planned_distance_km",
+                            "planned_moving_time_hours",
+                            "planned_elevation_m",
+                        ],
                         "properties": {
                             "planned_distance_km": {"type": "number", "minimum": 0},
                             "planned_moving_time_hours": {"type": "number", "minimum": 0},
@@ -113,11 +126,25 @@ TRAINING_PLAN_SCHEMA: Dict[str, Any] = {
                                 "title": {"type": "string"},
                                 "session_type": {
                                     "type": "string",
-                                    "enum": ["rest", "easy", "aerobic", "long", "tempo", "intervals", "hills", "strength", "cross"],
+                                    "enum": [
+                                        "rest",
+                                        "easy",
+                                        "aerobic",
+                                        "long",
+                                        "tempo",
+                                        "intervals",
+                                        "hills",
+                                        "strength",
+                                        "cross",
+                                    ],
                                 },
                                 "is_rest_day": {"type": "boolean"},
                                 "is_hard_day": {"type": "boolean"},
-                                "duration_minutes": {"type": "integer", "minimum": 0, "maximum": 420},
+                                "duration_minutes": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 420,
+                                },
                                 "target_intensity": {"type": "string"},
                                 "terrain": {"type": "string"},
                                 "workout": {"type": "string"},
@@ -180,7 +207,7 @@ def training_plan_output_contract_text() -> str:
         "- readiness.signal_ids MUST justify readiness.\n"
         "- citations MUST list the signal_ids you used (dedup ok).\n"
         "- citations[].value MUST be a STRING.\n"
-        "- snapshot.last7 and snapshot.baseline28 MUST include all keys; use empty string \"\" if unknown.\n"
+        '- snapshot.last7 and snapshot.baseline28 MUST include all keys; use empty string "" if unknown.\n'
         "- If data is missing, write it in data_notes; do NOT fabricate.\n"
     )
 
@@ -216,7 +243,14 @@ def ensure_training_plan_shape(obj: Any) -> Dict[str, Any]:
     for i, d in enumerate(days):
         if not isinstance(d, dict):
             raise ValueError(f"plan.days[{i}] must be an object.")
-        for k in ("date", "session_type", "is_hard_day", "is_rest_day", "duration_minutes", "signal_ids"):
+        for k in (
+            "date",
+            "session_type",
+            "is_hard_day",
+            "is_rest_day",
+            "duration_minutes",
+            "signal_ids",
+        ):
             if k not in d:
                 raise ValueError(f"plan.days[{i}] missing required key: {k}")
 

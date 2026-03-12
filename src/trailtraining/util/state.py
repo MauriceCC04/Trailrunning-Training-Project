@@ -10,6 +10,7 @@ from typing import Any, Union
 
 PathLike = Union[str, Path]
 
+
 def load_json(path: PathLike, default: Any = None) -> Any:
     p = Path(path)
     if not p.exists():

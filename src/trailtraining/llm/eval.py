@@ -12,7 +12,9 @@ from trailtraining.llm.constraints import (
 from trailtraining.util.state import load_json
 
 
-def _load_rollups_near(path: Path, explicit_rollups: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def _load_rollups_near(
+    path: Path, explicit_rollups: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
     if explicit_rollups:
         p = Path(explicit_rollups).expanduser().resolve()
         x = load_json(p, default=None)

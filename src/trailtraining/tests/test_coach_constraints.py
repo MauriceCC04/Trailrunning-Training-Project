@@ -14,9 +14,30 @@ def test_constraints_ramp_and_consecutive_hard():
                 "planned_elevation_m": 2000.0,
             },
             "days": [
-                {"date": "2026-03-01", "is_hard_day": True, "is_rest_day": False, "duration_minutes": 60, "session_type": "tempo", "signal_ids": []},
-                {"date": "2026-03-02", "is_hard_day": True, "is_rest_day": False, "duration_minutes": 60, "session_type": "intervals", "signal_ids": []},
-                {"date": "2026-03-03", "is_hard_day": True, "is_rest_day": False, "duration_minutes": 60, "session_type": "hills", "signal_ids": []},
+                {
+                    "date": "2026-03-01",
+                    "is_hard_day": True,
+                    "is_rest_day": False,
+                    "duration_minutes": 60,
+                    "session_type": "tempo",
+                    "signal_ids": [],
+                },
+                {
+                    "date": "2026-03-02",
+                    "is_hard_day": True,
+                    "is_rest_day": False,
+                    "duration_minutes": 60,
+                    "session_type": "intervals",
+                    "signal_ids": [],
+                },
+                {
+                    "date": "2026-03-03",
+                    "is_hard_day": True,
+                    "is_rest_day": False,
+                    "duration_minutes": 60,
+                    "session_type": "hills",
+                    "signal_ids": [],
+                },
             ],
         }
     }

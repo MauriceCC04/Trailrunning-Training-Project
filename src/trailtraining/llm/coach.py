@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from openai import OpenAI
 
 from trailtraining import config
+from trailtraining.llm.guardrails import apply_eval_coach_guardrails, build_eval_constraints_block
 from trailtraining.llm.presets import get_system_prompt, get_task_prompt
 from trailtraining.llm.schemas import (
     TRAINING_PLAN_SCHEMA,
@@ -21,8 +22,6 @@ from trailtraining.llm.schemas import (
 )
 from trailtraining.llm.signals import build_retrieval_context
 from trailtraining.util.state import load_json, save_json
-from trailtraining.llm.guardrails import apply_eval_coach_guardrails, build_eval_constraints_block
-
 
 log = logging.getLogger(__name__)
 
@@ -55,7 +54,9 @@ def _resolve_input_paths(
         base = Path(config.PROMPTING_DIRECTORY).expanduser().resolve()
 
     if base.is_file() and base.suffix.lower() == ".zip":
-        raise RuntimeError("Zip input not supported in this optimized version. Use a directory path.")
+        raise RuntimeError(
+            "Zip input not supported in this optimized version. Use a directory path."
+        )
 
     personal = _coerce_path(personal_path) or (base / "formatted_personal_data.json")
     summary = _coerce_path(summary_path) or (base / "combined_summary.json")
@@ -118,11 +119,11 @@ def _summarize_activity(a: Dict[str, Any]) -> str:
 
     parts = [str(sport)]
     if isinstance(dist_m, (int, float)):
-        parts.append(f"{dist_m/1000.0:.2f} km")
+        parts.append(f"{dist_m / 1000.0:.2f} km")
     if isinstance(elev_m, (int, float)):
         parts.append(f"{elev_m:.0f} m+")
     if isinstance(mv_s, (int, float)):
-        parts.append(f"{mv_s/60.0:.0f} min")
+        parts.append(f"{mv_s / 60.0:.0f} min")
     if isinstance(hr, (int, float)):
         parts.append(f"avgHR {hr:.0f}")
 
@@ -140,7 +141,16 @@ def _summarize_day(day: Dict[str, Any]) -> str:
     sleep = day.get("sleep")
     if isinstance(sleep, dict):
         # keep it lightweight: only include a few small fields if present
-        keys = ["sleep_score", "score", "duration", "total_sleep", "resting_hr", "rhr", "readiness", "stress"]
+        keys = [
+            "sleep_score",
+            "score",
+            "duration",
+            "total_sleep",
+            "resting_hr",
+            "rhr",
+            "readiness",
+            "stress",
+        ]
         picked = {k: sleep.get(k) for k in keys if k in sleep}
         if picked:
             lines.append(f"Sleep: {picked}")
@@ -391,7 +401,9 @@ def training_plan_to_text(obj: Dict[str, Any]) -> str:
     if today:
         lines.append(f"Generated: {today}")
     if plan_start or plan_days:
-        lines.append(f"Plan start: {plan_start or '(unknown)'}   Days: {plan_days if plan_days is not None else '(unknown)'}")
+        lines.append(
+            f"Plan start: {plan_start or '(unknown)'}   Days: {plan_days if plan_days is not None else '(unknown)'}"
+        )
     if style:
         lines.append(f"Style: {style}")
 
@@ -490,7 +502,9 @@ def training_plan_to_text(obj: Dict[str, Any]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def _call_responses_best_effort_schema(client: OpenAI, kwargs: Dict[str, Any], schema: Dict[str, Any]) -> Any:
+def _call_responses_best_effort_schema(
+    client: OpenAI, kwargs: Dict[str, Any], schema: Dict[str, Any]
+) -> Any:
     """
     Best-effort "structured output" call:
     - Try text.format=json_schema
@@ -502,7 +516,11 @@ def _call_responses_best_effort_schema(client: OpenAI, kwargs: Dict[str, Any], s
     try:
         kw = dict(kwargs)
         text_cfg = dict(kw.get("text") or {})
-        text_cfg["format"] = {"type": "json_schema", "name": schema.get("name"), "schema": schema.get("schema")}
+        text_cfg["format"] = {
+            "type": "json_schema",
+            "name": schema.get("name"),
+            "schema": schema.get("schema"),
+        }
         kw["text"] = text_cfg
         return client.responses.create(**kw)
     except TypeError:
@@ -511,7 +529,11 @@ def _call_responses_best_effort_schema(client: OpenAI, kwargs: Dict[str, Any], s
     # Attempt B: response_format
     try:
         kw = dict(kwargs)
-        kw["response_format"] = {"type": "json_schema", "name": schema.get("name"), "schema": schema.get("schema")}
+        kw["response_format"] = {
+            "type": "json_schema",
+            "name": schema.get("name"),
+            "schema": schema.get("schema"),
+        }
         return client.responses.create(**kw)
     except TypeError:
         pass
@@ -656,7 +678,9 @@ def _build_prompt_text(
 @dataclass(frozen=True)
 class CoachConfig:
     model: str = os.getenv("TRAILTRAINING_LLM_MODEL", "gpt-5.2")
-    reasoning_effort: str = os.getenv("TRAILTRAINING_REASONING_EFFORT", "medium")  # none|low|medium|high|xhigh
+    reasoning_effort: str = os.getenv(
+        "TRAILTRAINING_REASONING_EFFORT", "medium"
+    )  # none|low|medium|high|xhigh
     verbosity: str = os.getenv("TRAILTRAINING_VERBOSITY", "medium")  # low|medium|high
     days: int = int(os.getenv("TRAILTRAINING_COACH_DAYS", "60"))
     max_chars: int = int(os.getenv("TRAILTRAINING_COACH_MAX_CHARS", "200000"))

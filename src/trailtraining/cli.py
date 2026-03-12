@@ -6,6 +6,7 @@ import shutil
 import sys
 from pathlib import Path
 
+
 def configure_logging(level: str) -> None:
     """
     Central logging setup for the CLI.
@@ -72,7 +73,9 @@ def apply_profile(profile: str) -> str:
     _load_env_file(env_path)
 
     # If still not set, isolate data by profile
-    os.environ.setdefault("TRAILTRAINING_BASE_DIR", str(Path.home() / "trailtraining-data" / profile))
+    os.environ.setdefault(
+        "TRAILTRAINING_BASE_DIR", str(Path.home() / "trailtraining-data" / profile)
+    )
 
     return profile
 
@@ -139,7 +142,9 @@ def cmd_run_all_intervals(args):
 
 def _detect_provider_for_doctor() -> str:
     # Prefer explicit env var, otherwise auto.
-    env_v = ((os.getenv("TRAILTRAINING_WELLNESS_PROVIDER") or "").strip() or (os.getenv("WELLNESS_PROVIDER") or "").strip())
+    env_v = (os.getenv("TRAILTRAINING_WELLNESS_PROVIDER") or "").strip() or (
+        os.getenv("WELLNESS_PROVIDER") or ""
+    ).strip()
     v = env_v.lower() if env_v else "auto"
     if v in {"garmin", "intervals"}:
         return v
@@ -193,7 +198,10 @@ def cmd_doctor(_args):
     if (config.STRAVA_REDIRECT_URI or "").strip():
         ok("STRAVA_REDIRECT_URI set", config.STRAVA_REDIRECT_URI)
     else:
-        warn("STRAVA_REDIRECT_URI missing", "Default will be used, but set it explicitly to match your Strava app.")
+        warn(
+            "STRAVA_REDIRECT_URI missing",
+            "Default will be used, but set it explicitly to match your Strava app.",
+        )
 
     token_path = default_token_path()
     if token_path.exists():
@@ -231,18 +239,27 @@ def cmd_doctor(_args):
             bad("GARMIN_PASSWORD missing")
             issues += 1
 
-        script = os.environ.get("GARMINGDB_CLI") or shutil.which("garmindb_cli") or shutil.which("garmindb_cli.py")
+        script = (
+            os.environ.get("GARMINGDB_CLI")
+            or shutil.which("garmindb_cli")
+            or shutil.which("garmindb_cli.py")
+        )
         if script:
             ok("GarminDb CLI found", script)
         else:
-            bad("GarminDb CLI missing", "Install GarminDb and ensure garmindb_cli is on PATH (or set GARMINGDB_CLI).")
+            bad(
+                "GarminDb CLI missing",
+                "Install GarminDb and ensure garmindb_cli is on PATH (or set GARMINGDB_CLI).",
+            )
             issues += 1
 
     # ---- Optional OpenAI ----
     if os.getenv("OPENAI_API_KEY") or os.getenv("TRAILTRAINING_OPENAI_API_KEY"):
         ok("OpenAI API key set (coach enabled)")
     else:
-        warn("OpenAI API key not set", "Coach won’t run until you set OPENAI_API_KEY (recommended).")
+        warn(
+            "OpenAI API key not set", "Coach won’t run until you set OPENAI_API_KEY (recommended)."
+        )
 
     print("\nSummary:")
     if issues:
@@ -281,6 +298,7 @@ def cmd_coach(args):
             txt_p = p.parent / f"{p.stem}.txt"
             if txt_p.exists():
                 print(f"[Saved] {txt_p}")
+
 
 def cmd_eval_coach(args):
     """
@@ -340,11 +358,14 @@ def cmd_eval_coach(args):
         raise SystemExit(1)
     raise SystemExit(0)
 
+
 def cmd_forecast(args):
     from trailtraining.forecast.forecast import run_forecasts
+
     r = run_forecasts(input_dir=args.input, output_path=args.output)
     print(f"[Saved] {r['saved']}")
     print(r["result"])
+
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="trailtraining", description="TrailTraining CLI")
@@ -364,7 +385,9 @@ def main(argv=None):
 
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("doctor", help="Check configuration + dependencies").set_defaults(func=cmd_doctor)
+    sub.add_parser("doctor", help="Check configuration + dependencies").set_defaults(
+        func=cmd_doctor
+    )
 
     auth_p = sub.add_parser("auth-strava", help="Run Strava auth flow (opens local server)")
     auth_p.add_argument(
@@ -373,11 +396,17 @@ def main(argv=None):
         help="Force reauthorization even if a token exists (useful if you authorized the wrong account).",
     )
     auth_p.set_defaults(func=cmd_auth_strava)
-    sub.add_parser("fetch-strava", help="Fetch activities from Strava").set_defaults(func=cmd_fetch_strava)
-    sub.add_parser("fetch-garmin", help="Fetch/process data from Garmin").set_defaults(func=cmd_fetch_garmin)
+    sub.add_parser("fetch-strava", help="Fetch activities from Strava").set_defaults(
+        func=cmd_fetch_strava
+    )
+    sub.add_parser("fetch-garmin", help="Fetch/process data from Garmin").set_defaults(
+        func=cmd_fetch_garmin
+    )
     sub.add_parser("combine", help="Combine Garmin + Strava JSONs").set_defaults(func=cmd_combine)
 
-    run_all_p = sub.add_parser("run-all", help="Run full pipeline (auto: Garmin OR Intervals → Strava → Combine)")
+    run_all_p = sub.add_parser(
+        "run-all", help="Run full pipeline (auto: Garmin OR Intervals → Strava → Combine)"
+    )
     run_all_p.add_argument(
         "--clean",
         action="store_true",
@@ -388,7 +417,9 @@ def main(argv=None):
         action="store_true",
         help="Delete files in processing/ before running (disables incremental Strava).",
     )
-    run_all_p.add_argument("--clean-prompting", action="store_true", help="Delete files in prompting/ before running.")
+    run_all_p.add_argument(
+        "--clean-prompting", action="store_true", help="Delete files in prompting/ before running."
+    )
     run_all_p.add_argument(
         "--wellness-provider",
         default=None,
@@ -398,26 +429,55 @@ def main(argv=None):
     run_all_p.set_defaults(func=cmd_run_all)
 
     # coach
-    coach_p = sub.add_parser("coach", help="LLM coach analysis on combined_summary.json + formatted_personal_data.json")
-    coach_p.add_argument("--prompt", default="training-plan", choices=["training-plan", "recovery-status", "meal-plan"])
+    coach_p = sub.add_parser(
+        "coach", help="LLM coach analysis on combined_summary.json + formatted_personal_data.json"
+    )
+    coach_p.add_argument(
+        "--prompt",
+        default="training-plan",
+        choices=["training-plan", "recovery-status", "meal-plan"],
+    )
     coach_p.add_argument("--model", default=os.getenv("TRAILTRAINING_LLM_MODEL", "gpt-5.2"))
     coach_p.add_argument(
         "--reasoning-effort",
         default=os.getenv("TRAILTRAINING_REASONING_EFFORT", "medium"),
         choices=["none", "low", "medium", "high", "xhigh"],
     )
-    coach_p.add_argument("--verbosity", default=os.getenv("TRAILTRAINING_VERBOSITY", "medium"), choices=["low", "medium", "high"])
-    coach_p.add_argument("--temperature", type=float, default=None, help="Only used if --reasoning-effort none (API restriction).")
-    coach_p.add_argument("--days", type=int, default=int(os.getenv("TRAILTRAINING_COACH_DAYS", "60")))
-    coach_p.add_argument("--max-chars", type=int, default=int(os.getenv("TRAILTRAINING_COACH_MAX_CHARS", "200000")))
+    coach_p.add_argument(
+        "--verbosity",
+        default=os.getenv("TRAILTRAINING_VERBOSITY", "medium"),
+        choices=["low", "medium", "high"],
+    )
+    coach_p.add_argument(
+        "--temperature",
+        type=float,
+        default=None,
+        help="Only used if --reasoning-effort none (API restriction).",
+    )
+    coach_p.add_argument(
+        "--days", type=int, default=int(os.getenv("TRAILTRAINING_COACH_DAYS", "60"))
+    )
+    coach_p.add_argument(
+        "--max-chars", type=int, default=int(os.getenv("TRAILTRAINING_COACH_MAX_CHARS", "200000"))
+    )
     coach_p.add_argument(
         "--output",
         default=None,
         help="Output file. Default: training-plan -> .json, others -> .md in <prompting_dir>/coach_brief_<prompt>.*",
     )
-    coach_p.add_argument("--input", default=None, help="Directory containing the two JSON files. Default: prompting directory")
-    coach_p.add_argument("--personal", default=None, help="Explicit path to formatted_personal_data.json (overrides --input)")
-    coach_p.add_argument("--summary", default=None, help="Explicit path to combined_summary.json (overrides --input)")
+    coach_p.add_argument(
+        "--input",
+        default=None,
+        help="Directory containing the two JSON files. Default: prompting directory",
+    )
+    coach_p.add_argument(
+        "--personal",
+        default=None,
+        help="Explicit path to formatted_personal_data.json (overrides --input)",
+    )
+    coach_p.add_argument(
+        "--summary", default=None, help="Explicit path to combined_summary.json (overrides --input)"
+    )
 
     # style preset
     coach_p.add_argument(
@@ -429,23 +489,49 @@ def main(argv=None):
     coach_p.set_defaults(func=cmd_coach)
 
     # eval-coach
-    eval_p = sub.add_parser("eval-coach", help="Evaluate coach training-plan JSON output against constraints")
-    eval_p.add_argument("--input", required=True, help="Path to coach_brief_training-plan.json (or any training-plan JSON)")
-    eval_p.add_argument("--rollups", default=None, help="Optional path to combined_rollups.json (default: same dir as --input)")
-    eval_p.add_argument("--max-ramp-pct", type=float, default=float(os.getenv("TRAILTRAINING_MAX_RAMP_PCT", "10")))
-    eval_p.add_argument("--max-consecutive-hard", type=int, default=int(os.getenv("TRAILTRAINING_MAX_CONSEC_HARD", "2")))
+    eval_p = sub.add_parser(
+        "eval-coach", help="Evaluate coach training-plan JSON output against constraints"
+    )
+    eval_p.add_argument(
+        "--input",
+        required=True,
+        help="Path to coach_brief_training-plan.json (or any training-plan JSON)",
+    )
+    eval_p.add_argument(
+        "--rollups",
+        default=None,
+        help="Optional path to combined_rollups.json (default: same dir as --input)",
+    )
+    eval_p.add_argument(
+        "--max-ramp-pct", type=float, default=float(os.getenv("TRAILTRAINING_MAX_RAMP_PCT", "10"))
+    )
+    eval_p.add_argument(
+        "--max-consecutive-hard",
+        type=int,
+        default=int(os.getenv("TRAILTRAINING_MAX_CONSEC_HARD", "2")),
+    )
     eval_p.add_argument("--output", default=None, help="Optional path to write violations JSON")
-    eval_p.add_argument("--report", default=None, help="Optional path to write full scoring report JSON")
+    eval_p.add_argument(
+        "--report", default=None, help="Optional path to write full scoring report JSON"
+    )
     eval_p.set_defaults(func=cmd_eval_coach)
 
     # intervals
-    intervals_p = sub.add_parser("fetch-intervals", help="Fetch sleep + resting HR from Intervals.icu")
-    intervals_p.add_argument("--script", default=None, help="(deprecated) Old node script path. Ignored; Python Intervals fetch is used.")
+    intervals_p = sub.add_parser(
+        "fetch-intervals", help="Fetch sleep + resting HR from Intervals.icu"
+    )
+    intervals_p.add_argument(
+        "--script",
+        default=None,
+        help="(deprecated) Old node script path. Ignored; Python Intervals fetch is used.",
+    )
     intervals_p.add_argument("--oldest", default=None, help="YYYY-MM-DD (default: lookback window)")
     intervals_p.add_argument("--newest", default=None, help="YYYY-MM-DD (default: today)")
     intervals_p.set_defaults(func=cmd_fetch_intervals)
 
-    run_all_int_p = sub.add_parser("run-all-intervals", help="Run full pipeline (Intervals → Strava → Combine)")
+    run_all_int_p = sub.add_parser(
+        "run-all-intervals", help="Run full pipeline (Intervals → Strava → Combine)"
+    )
     run_all_int_p.add_argument(
         "--clean",
         action="store_true",
@@ -456,14 +542,24 @@ def main(argv=None):
         action="store_true",
         help="Delete files in processing/ before running (disables incremental Strava).",
     )
-    run_all_int_p.add_argument("--clean-prompting", action="store_true", help="Delete files in prompting/ before running.")
+    run_all_int_p.add_argument(
+        "--clean-prompting", action="store_true", help="Delete files in prompting/ before running."
+    )
     run_all_int_p.set_defaults(func=cmd_run_all_intervals)
 
-    forecast_p = sub.add_parser("forecast", help="Readiness forecast + overreach risk (from combined_summary.json)")
-    forecast_p.add_argument("--input", default=None,
-                            help="Directory containing combined_summary.json (default: prompting dir)")
-    forecast_p.add_argument("--output", default=None,
-                            help="Output JSON path (default: <input>/readiness_and_risk_forecast.json)")
+    forecast_p = sub.add_parser(
+        "forecast", help="Readiness forecast + overreach risk (from combined_summary.json)"
+    )
+    forecast_p.add_argument(
+        "--input",
+        default=None,
+        help="Directory containing combined_summary.json (default: prompting dir)",
+    )
+    forecast_p.add_argument(
+        "--output",
+        default=None,
+        help="Output JSON path (default: <input>/readiness_and_risk_forecast.json)",
+    )
     forecast_p.set_defaults(func=cmd_forecast)
 
     args = parser.parse_args(argv)

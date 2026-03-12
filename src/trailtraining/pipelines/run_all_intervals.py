@@ -1,7 +1,9 @@
 from trailtraining.pipelines.run_all import main as run_all_main
 
 
-def main(*, clean: bool = False, clean_processing: bool = False, clean_prompting: bool = False) -> None:
+def main(
+    *, clean: bool = False, clean_processing: bool = False, clean_prompting: bool = False
+) -> None:
     """
     Back-compat wrapper: Run full pipeline (Intervals → Strava → Combine).
 

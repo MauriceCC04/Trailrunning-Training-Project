@@ -1,5 +1,6 @@
 from trailtraining.pipelines.intervals import normalize_to_filtered_sleep
 
+
 def test_intervals_normalize_basic():
     x = {"id": "2026-02-27", "sleepSecs": 3600, "restingHR": 45, "avgOvernightHrv": 55}
     out = normalize_to_filtered_sleep(x)

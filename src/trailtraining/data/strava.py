@@ -39,7 +39,7 @@ class StravaOAuthConfig:
     scope: str = "read,activity:read_all"
 
     @staticmethod
-    def from_env() -> "StravaOAuthConfig":
+    def from_env() -> StravaOAuthConfig:
         return StravaOAuthConfig(
             client_id=_get_env("STRAVA_CLIENT_ID"),
             client_secret=_get_env("STRAVA_CLIENT_SECRET"),
@@ -49,7 +49,9 @@ class StravaOAuthConfig:
 
 
 def default_token_path() -> Path:
-    base_dir = Path(os.getenv("TRAILTRAINING_BASE_DIR", str(Path.home() / ".trailtraining"))).expanduser()
+    base_dir = Path(
+        os.getenv("TRAILTRAINING_BASE_DIR", str(Path.home() / ".trailtraining"))
+    ).expanduser()
     token_dir = base_dir / "tokens"
     token_dir.mkdir(parents=True, exist_ok=True)
     return token_dir / "strava_token.json"
@@ -70,7 +72,9 @@ def build_authorize_url(config: StravaOAuthConfig, state: Optional[str] = None) 
     return f"{STRAVA_AUTHORIZE_URL}?{urlencode(params)}", state
 
 
-def exchange_code_for_token(config: StravaOAuthConfig, code: str, session: requests.Session = _SESSION) -> Dict[str, Any]:
+def exchange_code_for_token(
+    config: StravaOAuthConfig, code: str, session: requests.Session = _SESSION
+) -> Dict[str, Any]:
     resp = session.post(
         STRAVA_TOKEN_URL,
         data={
@@ -124,7 +128,9 @@ def token_is_valid(token: Dict[str, Any], leeway_seconds: int = 60) -> bool:
     return time.time() < (float(expires_at) - leeway_seconds)
 
 
-def get_valid_token(config: StravaOAuthConfig, token_path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+def get_valid_token(
+    config: StravaOAuthConfig, token_path: Optional[Path] = None
+) -> Optional[Dict[str, Any]]:
     token_path = token_path or default_token_path()
     token = load_token(token_path)
     if token is None:

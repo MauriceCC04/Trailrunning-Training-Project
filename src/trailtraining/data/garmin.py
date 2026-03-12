@@ -1,8 +1,9 @@
+import glob
 import json
 import os
-from trailtraining import config
 from datetime import datetime, timedelta
-import glob
+
+from trailtraining import config
 
 
 def combine_json_files(directory: str, output_file: str) -> None:
@@ -17,7 +18,7 @@ def combine_json_files(directory: str, output_file: str) -> None:
     combined_data = []
 
     for json_file in json_files:
-        with open(json_file, "r", encoding="utf-8") as file:
+        with open(json_file, encoding="utf-8") as file:
             data = json.load(file)
             combined_data.append(data)
     # delete the output file if it exists
@@ -32,7 +33,7 @@ def format_personal_data(input_path, output_path) -> None:
     """
     Format personal data from Garmin JSON file.
     """
-    with open(input_path, "r", encoding="utf-8") as f:
+    with open(input_path, encoding="utf-8") as f:
         data = json.load(f)
     # Remove specified keys from userInfo
     for key in ["email", "locale", "timeZone", "countryCode"]:
@@ -69,12 +70,12 @@ def shorten_rhr(input_path: str, output_path: str) -> None:
 
     today = datetime.now()
     cutoff = today - timedelta(days=200)
-    with open(input_path, "r", encoding="utf-8") as file:
+    with open(input_path, encoding="utf-8") as file:
         data = json.load(file)
     filtered = []
     for entry in data:
-        metrics = entry.get("allMetrics", {}).get("metricsMap", {}).get(
-            "WELLNESS_RESTING_HEART_RATE", []
+        metrics = (
+            entry.get("allMetrics", {}).get("metricsMap", {}).get("WELLNESS_RESTING_HEART_RATE", [])
         )
         if metrics:
             date_str = metrics[0].get("calendarDate")
@@ -97,7 +98,7 @@ def shorten_sleep(input_path: str, output_path: str) -> None:
     # the following needs to be changed
     # there is no more "dailySleepDTO", the entry is "calendarDate"
     cutoff = today - timedelta(days=200)
-    with open(input_path, "r", encoding="utf-8") as file:
+    with open(input_path, encoding="utf-8") as file:
         data = json.load(file)
     # delete the output file if it exists
     if os.path.exists(output_path):
@@ -135,7 +136,7 @@ def filter_sleep(input_path: str, output_path: str) -> None:
         * a list[list[dict]] (flattens)
         * a dict (wraps to list)
     """
-    with open(input_path, "r", encoding="utf-8") as f:
+    with open(input_path, encoding="utf-8") as f:
         raw = json.load(f)
 
     # Normalize shapes
@@ -201,7 +202,9 @@ def filter_sleep(input_path: str, output_path: str) -> None:
 def main():
     # Combine JSON files
     combine_json_files(config.RHR_DIRECTORY, os.path.join(config.PROCESSING_DIRECTORY, "rhr.json"))
-    combine_json_files(config.SLEEP_DIRECTORY, os.path.join(config.PROCESSING_DIRECTORY, "sleep.json"))
+    combine_json_files(
+        config.SLEEP_DIRECTORY, os.path.join(config.PROCESSING_DIRECTORY, "sleep.json")
+    )
 
     # Format personal data
     format_personal_data(
