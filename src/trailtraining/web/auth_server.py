@@ -7,7 +7,6 @@ from typing import Optional
 
 from flask import Flask, request
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 _app = Flask(__name__)

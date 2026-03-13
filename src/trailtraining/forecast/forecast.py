@@ -244,7 +244,17 @@ def compute_readiness_and_risk(
     else:
         risk_level = "low"
 
-    inputs = {
+    notes: list[str] = [
+        "training_load_hours = sum(moving_time_hours * load_factor)",
+        "load_factor uses avgHR/maxHR when available; otherwise defaults to 1.0",
+    ]
+
+    if used_rollups_last7:
+        notes.append(
+            "Used combined_rollups.json windows['7'].activities.total_training_load_hours as authoritative for training_load_7d_hours."
+        )
+
+    inputs: dict[str, Any] = {
         "as_of_date": last_d.isoformat(),
         "rhr_7d_mean_bpm": (round(rhr7, 2) if rhr7 is not None else None),
         "rhr_28d_mean_bpm": (round(rhr28, 2) if rhr28 is not None else None),
@@ -262,16 +272,8 @@ def compute_readiness_and_risk(
             round(float(delta_load), 3) if delta_load is not None else None
         ),
         "training_load_z": (round(z_load, 3) if z_load is not None else None),
-        "notes": [
-            "training_load_hours = sum(moving_time_hours * load_factor)",
-            "load_factor uses avgHR/maxHR when available; otherwise defaults to 1.0",
-        ],
+        "notes": notes,
     }
-
-    if used_rollups_last7:
-        inputs["notes"].append(
-            "Used combined_rollups.json windows['7'].activities.total_training_load_hours as authoritative for training_load_7d_hours."
-        )
 
     return ForecastResult(
         date=last_d.isoformat(),

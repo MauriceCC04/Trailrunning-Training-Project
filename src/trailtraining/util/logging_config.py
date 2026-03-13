@@ -1,26 +1,28 @@
-# src/trailtraining/util/logging_config.py
 from __future__ import annotations
 
 import logging
-import os
-from typing import Optional
+
+LOG_FORMAT = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 
 
-def configure_logging(level: Optional[str] = None) -> None:
-    """
-    Central logging setup for the CLI.
+def configure_logging(level: str | int | None = None) -> None:
+    raw_level = level if level is not None else "INFO"
 
-    Priority:
-      1) CLI arg (--log-level)
-      2) env TRAILTRAINING_LOG_LEVEL
-      3) default INFO
-    """
-    raw = (level or os.getenv("TRAILTRAINING_LOG_LEVEL") or "INFO").upper().strip()
-    if raw not in {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"}:
-        raw = "INFO"
+    if isinstance(raw_level, int):
+        numeric_level = raw_level
+    else:
+        normalized = str(raw_level).strip().upper()
+        numeric_level = getattr(logging, normalized, logging.INFO)
+
+    root_logger = logging.getLogger()
+
+    if root_logger.handlers:
+        root_logger.setLevel(numeric_level)
+        for handler in root_logger.handlers:
+            handler.setLevel(numeric_level)
+        return
 
     logging.basicConfig(
-        level=getattr(logging, raw),
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        force=True,  # make CLI override predictable
+        level=numeric_level,
+        format=LOG_FORMAT,
     )
