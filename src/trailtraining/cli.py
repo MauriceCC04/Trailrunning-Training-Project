@@ -5,25 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-
-def configure_logging(level: str) -> None:
-    """
-    Central logging setup for the CLI.
-
-    Priority:
-      1) CLI arg (--log-level)
-      2) env TRAILTRAINING_LOG_LEVEL
-      3) default INFO
-    """
-    raw = (level or os.getenv("TRAILTRAINING_LOG_LEVEL") or "INFO").upper().strip()
-    if raw not in {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"}:
-        raw = "INFO"
-
-    logging.basicConfig(
-        level=getattr(logging, raw),
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        force=True,
-    )
+from trailtraining.util.logging_config import configure_logging
 
 
 def _run(func):
@@ -266,6 +248,7 @@ def main(argv=None):
         choices=["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"],
         help="Logging verbosity (or set TRAILTRAINING_LOG_LEVEL).",
     )
+    configure_logging(os.getenv("TRAILTRAINING_LOG_LEVEL", "INFO"))
 
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -403,11 +386,6 @@ def main(argv=None):
     # intervals
     intervals_p = sub.add_parser(
         "fetch-intervals", help="Fetch sleep + resting HR from Intervals.icu"
-    )
-    intervals_p.add_argument(
-        "--script",
-        default=None,
-        help="(deprecated) Old node script path. Ignored; Python Intervals fetch is used.",
     )
     intervals_p.add_argument("--oldest", default=None, help="YYYY-MM-DD (default: lookback window)")
     intervals_p.add_argument("--newest", default=None, help="YYYY-MM-DD (default: today)")
