@@ -23,6 +23,53 @@ ReadinessStatus = Literal["primed", "steady", "fatigued"]
 RiskLevel = Literal["low", "moderate", "high"]
 
 
+def _sleep_hours(day_obj: dict[str, Any]) -> Optional[float]:
+    sleep = day_obj.get("sleep")
+    if not isinstance(sleep, dict):
+        return None
+    secs = sleep.get("sleepTimeSeconds")
+    if isinstance(secs, (int, float)) and float(secs) > 0:
+        return float(secs) / 3600.0
+    return None
+
+
+def _recent_signal_counts(days: list[dict[str, Any]]) -> dict[str, int]:
+    return {
+        "sleep": sum(1 for d in days if _sleep_hours(d) is not None),
+        "resting_hr": sum(1 for d in days if _sleep_int(d, "restingHeartRate") is not None),
+        "hrv": sum(1 for d in days if _sleep_int(d, "avgOvernightHrv") is not None),
+    }
+
+
+def _recovery_capability_from_counts(
+    counts: dict[str, int], *, min_days: int = 2
+) -> dict[str, str]:
+    active: list[tuple[str, str]] = []
+
+    if counts.get("sleep", 0) >= min_days:
+        active.append(("sleep", "sleep"))
+    if counts.get("resting_hr", 0) >= min_days:
+        active.append(("resting_hr", "resting HR"))
+    if counts.get("hrv", 0) >= min_days:
+        active.append(("hrv", "HRV"))
+
+    if not active:
+        return {
+            "key": "load_only",
+            "label": "I only have training data",
+        }
+
+    parts = [label for _, label in active]
+    key = "load_" + "_".join(k for k, _ in active)
+
+    if len(parts) == 1:
+        label = f"I have load + {parts[0]} only"
+    else:
+        label = "I have load + " + " + ".join(parts)
+
+    return {"key": key, "label": label}
+
+
 def _to_float(value: object) -> float | None:
     if isinstance(value, (int, float)):
         return float(value)
@@ -153,6 +200,14 @@ def compute_readiness_and_risk(
 
     w7 = _window_days(combined, last_d, 7)
     w28 = _window_days(combined, last_d, 28)
+    sleep7_vals = [v for v in (_sleep_hours(d) for d in w7) if v is not None]
+    hrv7_vals = [float(v) for v in (_sleep_int(d, "avgOvernightHrv") for d in w7) if v is not None]
+
+    sleep7 = _mean(sleep7_vals)
+    hrv7 = _mean(hrv7_vals)
+
+    signal_counts_7d = _recent_signal_counts(w7)
+    capability = _recovery_capability_from_counts(signal_counts_7d)
 
     rhr7_vals = [v for v in (_sleep_int(d, "restingHeartRate") for d in w7) if v is not None]
     rhr28_vals = [v for v in (_sleep_int(d, "restingHeartRate") for d in w28) if v is not None]
@@ -277,6 +332,13 @@ def compute_readiness_and_risk(
     notes: list[str] = [
         "training_load_hours = sum(moving_time_hours * load_factor)",
         "load_factor uses avgHR/maxHR when available; otherwise defaults to 1.0",
+        f"Recovery telemetry capability: {capability['label']}.",
+        (
+            "Recent 7d usable recovery days: "
+            f"sleep={signal_counts_7d['sleep']}, "
+            f"resting_hr={signal_counts_7d['resting_hr']}, "
+            f"hrv={signal_counts_7d['hrv']}."
+        ),
     ]
 
     if used_rollups_last7:
@@ -302,9 +364,16 @@ def compute_readiness_and_risk(
             round(float(delta_load), 3) if delta_load is not None else None
         ),
         "training_load_z": (round(z_load, 3) if z_load is not None else None),
+        # NEW
+        "sleep_7d_mean_hours": (round(sleep7, 2) if sleep7 is not None else None),
+        "hrv_7d_mean_ms": (round(hrv7, 2) if hrv7 is not None else None),
+        "recovery_capability_key": capability["key"],
+        "recovery_capability_label": capability["label"],
+        "sleep_days_7d": signal_counts_7d["sleep"],
+        "resting_hr_days_7d": signal_counts_7d["resting_hr"],
+        "hrv_days_7d": signal_counts_7d["hrv"],
         "notes": notes,
     }
-
     return ForecastResult(
         date=last_d.isoformat(),
         readiness_score=round(readiness, 1),

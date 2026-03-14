@@ -6,7 +6,104 @@ from pathlib import Path
 
 import pytest
 from trailtraining.contracts import EvaluationReportArtifact, ForecastArtifact
+from trailtraining.forecast.forecast import compute_readiness_and_risk
 from trailtraining.util.state import save_json
+
+
+def _day(d, *, sleep=None, rhr=None, hrv=None, load=True):
+    sleep_obj = None
+    if sleep is not None or rhr is not None or hrv is not None:
+        sleep_obj = {}
+        if sleep is not None:
+            sleep_obj["sleepTimeSeconds"] = sleep
+        if rhr is not None:
+            sleep_obj["restingHeartRate"] = rhr
+        if hrv is not None:
+            sleep_obj["avgOvernightHrv"] = hrv
+
+    activities = []
+    if load:
+        activities = [
+            {
+                "id": int(d[-2:]),
+                "sport_type": "Run",
+                "distance": 10000,
+                "moving_time": 3600,
+                "average_heartrate": 150,
+            }
+        ]
+
+    return {"date": d, "sleep": sleep_obj, "activities": activities}
+
+
+def test_forecast_capability_load_rhr_hrv():
+    combined = [
+        _day("2026-03-01", rhr=45, hrv=72),
+        _day("2026-03-02", rhr=46, hrv=70),
+        _day("2026-03-03", rhr=44, hrv=74),
+        _day("2026-03-04"),
+        _day("2026-03-05"),
+        _day("2026-03-06"),
+        _day("2026-03-07"),
+    ]
+    fr = compute_readiness_and_risk(combined)
+    assert fr.inputs["recovery_capability_label"] == "I have load + resting HR + HRV"
+
+
+def test_forecast_capability_load_sleep_only():
+    combined = [
+        _day("2026-03-01", sleep=28000),
+        _day("2026-03-02", sleep=28500),
+        _day("2026-03-03", sleep=29000),
+        _day("2026-03-04"),
+        _day("2026-03-05"),
+        _day("2026-03-06"),
+        _day("2026-03-07"),
+    ]
+    fr = compute_readiness_and_risk(combined)
+    assert fr.inputs["recovery_capability_label"] == "I have load + sleep only"
+
+
+def test_forecast_capability_load_sleep_rhr():
+    combined = [
+        _day("2026-03-01", sleep=28000, rhr=45),
+        _day("2026-03-02", sleep=28500, rhr=46),
+        _day("2026-03-03", sleep=29000, rhr=44),
+        _day("2026-03-04"),
+        _day("2026-03-05"),
+        _day("2026-03-06"),
+        _day("2026-03-07"),
+    ]
+    fr = compute_readiness_and_risk(combined)
+    assert fr.inputs["recovery_capability_label"] == "I have load + sleep + resting HR"
+
+
+def test_forecast_capability_training_only():
+    combined = [
+        _day("2026-03-01"),
+        _day("2026-03-02"),
+        _day("2026-03-03"),
+        _day("2026-03-04"),
+        _day("2026-03-05"),
+        _day("2026-03-06"),
+        _day("2026-03-07"),
+    ]
+    fr = compute_readiness_and_risk(combined)
+    assert fr.inputs["recovery_capability_label"] == "I only have training data"
+
+
+def test_forecast_capability_load_rhr_only():
+    combined = [
+        _day("2026-03-01", rhr=45),
+        _day("2026-03-02", rhr=46),
+        _day("2026-03-03", rhr=44),
+        _day("2026-03-04"),
+        _day("2026-03-05"),
+        _day("2026-03-06"),
+        _day("2026-03-07"),
+    ]
+    fr = compute_readiness_and_risk(combined)
+    assert fr.inputs["recovery_capability_label"] == "I have load + resting HR only"
 
 
 def write_combined_summary(path: Path) -> None:

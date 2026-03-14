@@ -140,6 +140,18 @@ class ForecastInputs(StrictModel):
     training_load_rolling7_std_hours: Optional[float] = None
     training_load_delta_hours: Optional[float] = None
     training_load_z: Optional[float] = None
+
+    # NEW
+    sleep_7d_mean_hours: Optional[float] = None
+    hrv_7d_mean_ms: Optional[float] = None
+
+    recovery_capability_key: str = "load_only"
+    recovery_capability_label: str = "I only have training data"
+
+    sleep_days_7d: int = 0
+    resting_hr_days_7d: int = 0
+    hrv_days_7d: int = 0
+
     notes: list[str] = Field(default_factory=list)
 
 

@@ -27,6 +27,30 @@ from trailtraining.util.state import load_json, save_json
 log = logging.getLogger(__name__)
 
 
+def _forecast_capability_block(det_forecast: dict[str, Any]) -> list[str]:
+    if not isinstance(det_forecast, dict):
+        return []
+
+    res = _as_dict(det_forecast.get("result"))
+    inputs = _as_dict(res.get("inputs"))
+
+    label = _as_str(inputs.get("recovery_capability_label"))
+    if not label:
+        return []
+
+    sleep_days = inputs.get("sleep_days_7d")
+    rhr_days = inputs.get("resting_hr_days_7d")
+    hrv_days = inputs.get("hrv_days_7d")
+
+    return [
+        "## Available recovery telemetry (authoritative)",
+        label,
+        f"Recent 7d usable days: sleep={sleep_days}, resting_hr={rhr_days}, hrv={hrv_days}",
+        "Do not assume unavailable recovery signals exist. Base advice only on the available telemetry above.",
+        "",
+    ]
+
+
 def _as_date(s: str) -> Optional[date]:
     try:
         return date.fromisoformat(s)
@@ -274,6 +298,19 @@ def _forecast_signal_rows(det_forecast: dict[str, Any]) -> list[dict[str, Any]]:
     date_range = f"{d}..{d}" if isinstance(d, str) and d else ""
 
     readiness = res.get("readiness")
+    inputs = _as_dict(res.get("inputs"))
+    if isinstance(inputs, dict):
+        cap_label = inputs.get("recovery_capability_label")
+        if isinstance(cap_label, str) and cap_label.strip():
+            out.append(
+                {
+                    "signal_id": "forecast.recovery_capability.label",
+                    "value": cap_label,
+                    "unit": "",
+                    "source": "readiness_and_risk_forecast.json:result.inputs.recovery_capability_label",
+                    "date_range": date_range,
+                }
+            )
     if isinstance(readiness, dict):
         st = readiness.get("status")
         sc = readiness.get("score")
@@ -295,7 +332,21 @@ def _forecast_signal_rows(det_forecast: dict[str, Any]) -> list[dict[str, Any]]:
                 "date_range": date_range,
             }
         )
-
+        for key, signal_id in [
+            ("sleep_days_7d", "forecast.recovery_capability.sleep_days_7d"),
+            ("resting_hr_days_7d", "forecast.recovery_capability.resting_hr_days_7d"),
+            ("hrv_days_7d", "forecast.recovery_capability.hrv_days_7d"),
+        ]:
+            value = inputs.get(key)
+            out.append(
+                {
+                    "signal_id": signal_id,
+                    "value": value,
+                    "unit": "days",
+                    "source": f"readiness_and_risk_forecast.json:result.inputs.{key}",
+                    "date_range": date_range,
+                }
+            )
     risk = res.get("overreach_risk")
     if isinstance(risk, dict):
         lv = risk.get("level")
@@ -587,6 +638,7 @@ def _build_prompt_text(
         "",
     ]
     if deterministic_forecast is not None:
+        header += _forecast_capability_block(deterministic_forecast)
         header += [
             "## Deterministic readiness & overreach risk (authoritative)",
             _safe_json_snippet(deterministic_forecast, max_chars=40_000),
