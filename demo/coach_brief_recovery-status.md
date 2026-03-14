@@ -1,62 +1,65 @@
-## Coach Brief — recovery-status (as of 2026-03-12)
+## Coach Brief — Recovery Status (as of 2026-03-14)
 
 ### Snapshot (Yesterday + last 7 days)
-**Yesterday (2026-03-12)**
-- **Ride** 51.44 km, **112 min**, 109 m+, **avgHR 164** (Lunch Ride)
+**Yesterday (2026-03-13)**
+- **Ride:** 51.12 km, **107 min**, 120 m+, **avgHR 159** (moderately hard aerobic day)
 
-**Last 7 days (2026-03-06..2026-03-12) — load**
-- **6 sessions** *(signal: `load.last7.activity_count` = 6)*
-- **9.53 h moving time** *(signal: `load.last7.moving_time_hours` = 9.533 h)*
-- **181.9 km** *(signal: `load.last7.distance_km` = 181.909 km)*
-- **1949 m climbing** *(signal: `load.last7.elevation_m` = 1949 m)*
-- **Training load = 21.30 load-h** *(signal: `load.last7.training_load_hours` = 21.301 load_h)*
-  - Mix: **5 Rides + 1 TrailRun** (the TrailRun accounts for most of the climbing)
+**Last 7 days (2026-03-07..2026-03-13) — current load**
+- **Volume/Load:** 233.0 km, **11.32 h moving**, 2069 m+, **25.39 training_load_h**, **7 activities**
+  (signals: `load.last7.distance_km`, `load.last7.moving_time_hours`, `load.last7.elevation_m`, `load.last7.training_load_hours`, `load.last7.activity_count`)
+- **Sport mix:** 6 rides + 1 big trail run (21.0 km / **1621 m+** / 3h16)
+- **Recovery data availability:** **0 sleep nights with data** in the last 7 days (signal: `load.last7.sleep_days_with_data`)
 
-**Recovery data availability (last 7 days)**
-- **No sleep metrics captured** *(signal: `load.last7.sleep_days_with_data` = 0; `recovery.last7.sleep_hours_mean` = null; `recovery.last7.hrv_mean` = null; `recovery.last7.rhr_mean` = null)*
-- Baseline context: last 28 days shows **sleep mean ~8.7 h when data exists** *(signal: `recovery.last28.sleep_hours_mean` = 8.7 h; 17 days with sleep data in 28d rollup)*
+**Baseline (last 28 days)**
+- 82.27 training_load_h over 28d (signal: `load.baseline28.training_load_hours`) ⇒ ~**20.6 training_load_h per week** on average
+- Sleep baseline when available: **8.67 h mean** over last 28d (signal: `recovery.last28.sleep_hours_mean`)
+
+**What stands out**
+- Your **last-7 load is elevated vs your 28-day “typical week”** (25.39 vs ~20.6 training_load_h/week), and it’s been **dense** (7 sessions in 7 days) without an obvious unload day.
+- The last 2 days show **higher avgHR rides (159, 164)**, which often adds more stress than the same duration at lower HR.
 
 ---
 
 ### Readiness
-**Status: steady** *(authoritative signal: `forecast.readiness.status` = steady; score `forecast.readiness.score` = 56.2)*
+**Status: `steady`** (authoritative; signal: `forecast.readiness.status`, score `forecast.readiness.score` = 56.2)
 
-**Why “steady” (what’s driving it)**
-- **Load is elevated vs your recent rolling baseline**, which increases recovery demand *(signals: `load.last7.training_load_hours` = 21.301; deterministic driver notes + overreach risk below)*.
-- **We can’t confirm recovery is keeping up** because there’s **zero sleep/HRV/RHR data in the last 7 days** *(signals: `load.last7.sleep_days_with_data` = 0; `recovery.last7.*` all null)*.
-- **Overreach risk is moderate** right now *(signals: `forecast.overreach_risk.level` = moderate; `forecast.overreach_risk.score` = 66.0)*—this aligns with a week containing both higher cardiovascular strain rides (e.g., yesterday avgHR 164) and a big-vert trail run earlier in the week.
+**Rationale (data-based)**
+- Deterministic model flags **moderate overreach risk** (signals: `forecast.overreach_risk.level` = moderate, `forecast.overreach_risk.score` = 66.0), driven by **7d training load elevated vs recent rolling baseline** (as provided in the deterministic drivers).
+- **We cannot confirm recovery** via sleep/HRV/RHR trends this week because **sleep data is missing** (signals: `recovery.last7.sleep_hours_mean`, `recovery.last7.hrv_mean`, `recovery.last7.rhr_mean` are null). So “steady” here is essentially: *load is up, but we lack physiological recovery markers to upgrade/downgrade confidently.*
 
 ---
 
-### Recovery actions for today/tonight (priority order)
-1. **Sleep (highest leverage)**
-   - Aim for a **full night** consistent with your recent baseline pattern (your 28-day mean when recorded is **~8.7 h**, signal: `recovery.last28.sleep_hours_mean`).
-   - If schedule allows: **20–30 min nap** or quiet lying-down reset to reduce accumulated stress from the elevated 7-day load.
+### Recovery actions for today/tonight (to reduce overreach risk)
+**1) Training choice today (recovery-forward)**
+- Make today a **rest day** *or* **30–60 min very easy (Z1) spin/walk**, flat, nose-breathing easy.
+- Purpose: **absorb** the last 7 days and reduce the chance that the next quality/long day becomes a “forced” off day.
 
-2. **Fueling**
-   - Given the elevated 7-day training load *(signal: `load.last7.training_load_hours` = 21.301)*, prioritize **carb + protein** across the day:
-     - After training (or as a general recovery meal): **carb-forward meal + 25–40 g protein**.
-   - If training again today: **carbs before + during**, even for rides, to avoid digging a deeper hole.
+**2) Mobility / tissue care (10–20 min)**
+- Easy hips + calves + ankles sequence, plus light thoracic rotation.
+- If you’re carrying soreness from the 1621 m+ trail run, keep this **gentle**, not aggressive stretching.
 
-3. **Hydration**
-   - Replace fluids proactively (especially after higher-HR rides like yesterday). Add **electrolytes** if you’re sweating heavily or riding indoors.
+**3) Fueling & hydration (simple targets)**
+- **Today:** prioritize regular meals with **protein at each meal** (recovery/repair) and **carbs** proportional to whether you train.
+- **If you do any session:** take carbs during if >60 min, and get a carb+protein meal within ~2 hours after.
+- Hydration: aim for **clear/pale urine by mid-day**, and add electrolytes if you’re training or it’s warm.
 
-4. **Mobility / tissue work (10–20 min)**
-   - **Calves/ankles + hips + T-spine** (trail + cycling posture combo).
-   - Keep it easy: the goal is to **downshift**, not create more soreness.
+**4) Sleep**
+- You have a strong baseline when it’s tracked (28d mean **8.67 h**, signal: `recovery.last28.sleep_hours_mean`). Use that as your target: **plan for ~8.5–9 h time-in-bed tonight**.
+- Because we’re missing sleep telemetry this week, be extra strict with sleep routine (same bedtime, dark/cool room).
 
 ---
 
 ### Warnings / flags
-- **Moderate overreach risk** *(signals: `forecast.overreach_risk.level` = moderate; `forecast.overreach_risk.score` = 66.0)*: with load elevated vs your recent rolling baseline, watch for “hidden fatigue” signs (heavy legs, unusually high effort for normal pace/power, irritability, poor sleep).
-- **No recovery telemetry for 7 straight days** *(signal: `load.last7.sleep_days_with_data` = 0)*: that makes it easy to accidentally stack fatigue because we can’t validate whether sleep/HRV/RHR are trending well.
-- Subjective note worth respecting: your 3/7 trail run title suggests you were managing pain (“Ibuprofen…”). Without more data I can’t assess it, but it’s a **risk flag**: avoid forcing intensity if anything feels structurally “sharp” or worsening.
+- **Load density:** 7 sessions in 7 days (signal: `load.last7.activity_count`), plus a high-vert trail run—this is a classic setup for “quiet fatigue” even if you feel okay.
+- **Moderate overreach risk is already flagged** (signals: `forecast.overreach_risk.level`, `forecast.overreach_risk.score`). The safest move is to **insert a true easy/rest day now**.
+- **Recovery-data blind spot:** last 7 days has **no sleep/RHR/HRV data**, so if motivation drops, legs feel flat/heavy, or HR is unusually high for easy effort, treat that as actionable feedback and back off.
+- **Soft tissue/injury note:** the trail run title mentions pain management (“Ibuprofen…”). Not a diagnosis—just a flag to be conservative with intensity and downhill pounding until you’re consistently pain-free.
 
 ---
 
 ### Data notes (what I used / what’s missing)
-- Used **combined_rollups windows["7"] vs windows["28"]** as authoritative for load totals and baseline comparisons.
-- Treated sleep metrics as **missing** for the last 7 days because **sleep days with data = 0** *(signal: `load.last7.sleep_days_with_data`)*; therefore **no HRV/RHR/sleep trend** can be computed for the current week *(signals: `recovery.last7.sleep_hours_mean`, `recovery.last7.hrv_mean`, `recovery.last7.rhr_mean` are null)*.
-- Readiness status is set to **deterministic forecast**: *(signal: `forecast.readiness.status` = steady)*.
+- Load comes from rollups (authoritative): `load.last7.*` vs `load.baseline28.*`.
+- Recovery signals **could not be trended** this week: `recovery.last7.sleep_hours_mean`, `recovery.last7.hrv_mean`, `recovery.last7.rhr_mean` are null; rollup shows `load.last7.sleep_days_with_data` = 0.
+- Minor mismatch: the deterministic readiness inputs referenced **training_load_7d_hours = 21.301 as of 2026-03-12**, while the current 7-day rollup ending 2026-03-13 reports **25.394**—this is expected due to different “as-of” dates/windows rather than an error.
 
-If you want, share whether today is a planned training day or a recovery day—then I’ll translate this recovery status into a specific session recommendation that respects your ramp and hard-day constraints.
+If you want, share how your legs feel today (fresh/flat/sore) and whether you plan to run or ride—without sleep telemetry this week, your subjective check-in is the best tie-breaker for how conservative we should be.

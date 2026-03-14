@@ -1,70 +1,88 @@
 {
   "citations": [
     {
-      "date_range": "2026-03-06..2026-03-12",
+      "date_range": "2026-03-07..2026-03-13",
       "signal_id": "load.last7.distance_km",
       "source": "combined_rollups.json:windows.7.activities.total_distance_km",
-      "value": "181.909"
+      "value": "233.024"
     },
     {
-      "date_range": "2026-03-06..2026-03-12",
+      "date_range": "2026-03-07..2026-03-13",
       "signal_id": "load.last7.moving_time_hours",
       "source": "combined_rollups.json:windows.7.activities.total_moving_time_hours",
-      "value": "9.533"
+      "value": "11.324"
     },
     {
-      "date_range": "2026-03-06..2026-03-12",
+      "date_range": "2026-03-07..2026-03-13",
       "signal_id": "load.last7.elevation_m",
       "source": "combined_rollups.json:windows.7.activities.total_elevation_m",
-      "value": "1949.0"
+      "value": "2069.0"
     },
     {
-      "date_range": "2026-03-06..2026-03-12",
+      "date_range": "2026-03-07..2026-03-13",
       "signal_id": "load.last7.training_load_hours",
       "source": "combined_rollups.json:windows.7.activities.total_training_load_hours",
-      "value": "21.301"
+      "value": "25.394"
     },
     {
-      "date_range": "2026-03-06..2026-03-12",
+      "date_range": "2026-03-07..2026-03-13",
       "signal_id": "load.last7.activity_count",
       "source": "combined_rollups.json:windows.7.activities.count",
-      "value": "6"
+      "value": "7"
     },
     {
-      "date_range": "2026-03-06..2026-03-12",
+      "date_range": "2026-03-07..2026-03-13",
       "signal_id": "load.last7.sleep_days_with_data",
       "source": "combined_rollups.json:windows.7.sleep_days_with_data",
       "value": "0"
     },
     {
-      "date_range": "2026-02-13..2026-03-12",
+      "date_range": "2026-02-14..2026-03-13",
       "signal_id": "load.baseline28.distance_km",
       "source": "combined_rollups.json:windows.28.activities.total_distance_km",
-      "value": "606.425"
+      "value": "635.297"
     },
     {
-      "date_range": "2026-02-13..2026-03-12",
+      "date_range": "2026-02-14..2026-03-13",
       "signal_id": "load.baseline28.moving_time_hours",
       "source": "combined_rollups.json:windows.28.activities.total_moving_time_hours",
-      "value": "36.697"
+      "value": "36.674"
     },
     {
-      "date_range": "2026-02-13..2026-03-12",
+      "date_range": "2026-02-14..2026-03-13",
       "signal_id": "load.baseline28.elevation_m",
       "source": "combined_rollups.json:windows.28.activities.total_elevation_m",
-      "value": "5786.0"
+      "value": "5876.0"
     },
     {
-      "date_range": "2026-02-13..2026-03-12",
+      "date_range": "2026-02-14..2026-03-13",
       "signal_id": "load.baseline28.training_load_hours",
       "source": "combined_rollups.json:windows.28.activities.total_training_load_hours",
-      "value": "82.235"
+      "value": "82.268"
     },
     {
-      "date_range": "2026-02-13..2026-03-12",
+      "date_range": "2026-03-07..2026-03-13",
+      "signal_id": "recovery.last7.sleep_hours_mean",
+      "source": "combined_summary.json:sleep.sleepTimeSeconds",
+      "value": "null"
+    },
+    {
+      "date_range": "2026-02-14..2026-03-13",
       "signal_id": "recovery.last28.sleep_hours_mean",
       "source": "combined_summary.json:sleep.sleepTimeSeconds",
-      "value": "8.7"
+      "value": "8.67"
+    },
+    {
+      "date_range": "2026-03-07..2026-03-13",
+      "signal_id": "recovery.last7.hrv_mean",
+      "source": "combined_summary.json:sleep.avgOvernightHrv",
+      "value": "null"
+    },
+    {
+      "date_range": "2026-03-07..2026-03-13",
+      "signal_id": "recovery.last7.rhr_mean",
+      "source": "combined_summary.json:sleep.restingHeartRate",
+      "value": "null"
     },
     {
       "date_range": "2026-03-12..2026-03-12",
@@ -92,183 +110,183 @@
     }
   ],
   "data_notes": [
-    "Rollups were used as authoritative for last-7 and baseline-28 training load totals.",
-    "Sleep metrics for 2026-03-06..2026-03-12 are missing in the rollup window (sleep_days_with_data=0), so last-7 sleep/HRV/RHR means are left blank rather than estimated.",
-    "Baseline 28d includes sleep_hours_mean (8.7h) but baseline HRV/RHR signals were not provided in the Signal registry, so they are not reported.",
-    "Planned weekly distance/elevation are targets (not measured from data) while planned time is constrained to remain below the max ramp requirement.",
+    "Used combined_rollups.json as authoritative for last-7 and last-28 load totals (distance, moving time, elevation, training load).",
+    "Last 7 days have 0 sleep days with data, so last-7 sleep/HRV/RHR means are unknown (null in signals) and were not inferred.",
+    "No personal biometrics (e.g., lactate threshold HR) were available, so intensity guidance is based on session type, HR presence in activities, and conservative distribution rather than HR-zone prescriptions.",
+    "Weekly plan moving time is ~9.5 h, staying under the max ramp constraint (<= 12.46 h) relative to last 7 days (11.324 h).",
     "Readiness status was set from deterministic readiness_and_risk_forecast.json.",
-    "Guardrails: enforced ramp rate (max_ramp_pct=10.0%). last7_hours=9.533, allowed_hours=10.486, planned_hours=8.200."
+    "Guardrails: enforced ramp rate (max_ramp_pct=10.0%). last7_hours=11.324, allowed_hours=12.456, planned_hours=9.500."
   ],
   "meta": {
     "plan_days": 7,
-    "plan_start": "2026-03-13",
-    "style": "Trail + bike (deload-leaning week with 2 quality touches)",
-    "today": "2026-03-13"
+    "plan_start": "2026-03-14",
+    "style": "trail+endurance (bike-heavy) with conservative load due to elevated recent training load and limited recovery telemetry",
+    "today": "2026-03-14"
   },
   "plan": {
     "days": [
       {
-        "date": "2026-03-13",
-        "duration_minutes": 0,
-        "is_hard_day": false,
-        "is_rest_day": true,
-        "purpose": "Create a clear recovery signal after an elevated 7-day load; set up the next 6 days to be productive without stacking fatigue.",
-        "session_type": "rest",
-        "signal_ids": [
-          "forecast.overreach_risk.level",
-          "load.last7.training_load_hours",
-          "load.last7.sleep_days_with_data",
-          "forecast.readiness.status"
-        ],
-        "target_intensity": "No training stress today. If you want to move: 20–30 min easy walk only.",
-        "terrain": "Flat / easy surfaces",
-        "title": "Rest + reset (absorb the elevated 7d load)",
-        "workout": "Off. Optional: 10–15 min mobility (ankles/hips/T-spine) + light leg flush (foam roll)."
-      },
-      {
         "date": "2026-03-14",
-        "duration_minutes": 90,
+        "duration_minutes": 75,
         "is_hard_day": false,
         "is_rest_day": false,
-        "purpose": "Maintain aerobic frequency while keeping overall stress controlled this week.",
-        "session_type": "aerobic",
+        "purpose": "Absorb the elevated recent load while keeping frequency and leg circulation.",
+        "session_type": "easy",
         "signal_ids": [
           "forecast.readiness.status",
-          "load.last7.moving_time_hours",
+          "forecast.overreach_risk.level",
           "load.last7.training_load_hours",
-          "forecast.overreach_risk.level"
+          "load.last7.moving_time_hours"
         ],
-        "target_intensity": "Easy conversational / all-day pace. Smooth cadence; avoid surges.",
-        "terrain": "Mostly flat to rolling; minimize long climbs",
-        "title": "Easy aerobic ride (keep it truly easy)",
-        "workout": "90 min easy. Optional: include 4 × 15 sec high-cadence spin-ups (NOT sprints), full easy recovery between."
+        "target_intensity": "Easy conversational aerobic throughout; keep pressure off the pedals (no sustained efforts).",
+        "terrain": "Flat to rolling; avoid long climbs today.",
+        "title": "Easy aerobic spin + cadence focus",
+        "workout": "75 min easy Ride. Include 6 x 20s high-cadence spin-ups (very light resistance) with full easy riding between."
       },
       {
         "date": "2026-03-15",
-        "duration_minutes": 150,
+        "duration_minutes": 140,
         "is_hard_day": false,
         "is_rest_day": false,
-        "purpose": "Long-session stimulus without making it a hard day; supports endurance while staying within a safe weekly ramp.",
+        "purpose": "Maintain trail specificity and durability without stacking intensity after an elevated-load week.",
         "session_type": "long",
         "signal_ids": [
-          "load.last7.moving_time_hours",
-          "load.baseline28.moving_time_hours",
           "forecast.overreach_risk.level",
-          "forecast.readiness.status"
+          "load.last7.elevation_m",
+          "load.last7.training_load_hours",
+          "load.baseline28.elevation_m"
         ],
-        "target_intensity": "Easy endurance. You should finish feeling like you could keep going.",
-        "terrain": "Rolling endurance route; keep climbs aerobic (no hard pushes)",
-        "title": "Long aerobic (steady endurance, low intensity)",
-        "workout": "150 min easy aerobic ride. Fuel it (carbs early + steady) to keep effort honest and prevent late-ride intensity drift."
+        "target_intensity": "Easy all day; hike the steeper climbs to keep effort smooth and sustainable.",
+        "terrain": "Trail with moderate climbing; aim ~700–1000 m vertical (stay below last week’s big-vert day feel).",
+        "title": "Long easy trail (run/hike) with controlled vertical",
+        "workout": "140 min trail run/hike. Keep downhills controlled. Optional: last 10 min very easy if legs feel beat up."
       },
       {
         "date": "2026-03-16",
-        "duration_minutes": 50,
+        "duration_minutes": 0,
         "is_hard_day": false,
-        "is_rest_day": false,
-        "purpose": "Reintroduce run frequency without adding intensity; keep neuromuscular touch via short strides only if you feel good.",
-        "session_type": "easy",
+        "is_rest_day": true,
+        "purpose": "Guarantee at least one true down day to reduce overreach risk given elevated recent load and missing recovery data.",
+        "session_type": "rest",
         "signal_ids": [
-          "forecast.readiness.status",
           "forecast.overreach_risk.level",
+          "forecast.overreach_risk.score",
           "load.last7.training_load_hours",
           "load.last7.sleep_days_with_data"
         ],
-        "target_intensity": "Easy. If breathing/legs feel heavy, shorten to 35–40 min.",
-        "terrain": "Flat to gently rolling; soft surface if possible",
-        "title": "Easy run (economy + tissue conditioning)",
-        "workout": "50 min easy run. Optional: 4–6 × 10 sec relaxed strides on flat (full easy jog recoveries)."
+        "target_intensity": "No training load today.",
+        "terrain": "N/A",
+        "title": "Rest day (full off) + mobility",
+        "workout": "OFF. 15–25 min gentle mobility (hips/ankles/T-spine) + light walk only if you feel stiff."
       },
       {
         "date": "2026-03-17",
-        "duration_minutes": 75,
-        "is_hard_day": true,
-        "is_rest_day": false,
-        "purpose": "One focused intensity stimulus to maintain fitness while keeping total weekly stress in check.",
-        "session_type": "intervals",
-        "signal_ids": [
-          "forecast.readiness.status",
-          "forecast.overreach_risk.level",
-          "load.last7.training_load_hours",
-          "load.baseline28.training_load_hours"
-        ],
-        "target_intensity": "Hard but controlled; keep the last rep as strong as the first. Stop early if form/effort spikes.",
-        "terrain": "Flat to gentle rise (steady power/effort)",
-        "title": "Quality 1: Bike intervals (controlled, repeatable)",
-        "workout": "Warm-up 15 min easy → 4 × 6 min strong (upper-tempo/threshold feel) with 4 min easy between → cool down easy to 75 min total."
-      },
-      {
-        "date": "2026-03-18",
-        "duration_minutes": 60,
-        "is_hard_day": false,
-        "is_rest_day": false,
-        "purpose": "Facilitate recovery between hard days; reduce the risk of stacking intensity.",
-        "session_type": "easy",
-        "signal_ids": [
-          "forecast.overreach_risk.level",
-          "load.last7.sleep_days_with_data",
-          "forecast.readiness.status",
-          "load.last7.moving_time_hours"
-        ],
-        "target_intensity": "Very easy, nose-breathing level; keep it light.",
-        "terrain": "Flat; avoid headwind grind",
-        "title": "Recovery spin (or rest if fatigue shows up)",
-        "workout": "60 min easy spin. If you’re noticeably cooked, swap to complete rest + mobility."
-      },
-      {
-        "date": "2026-03-19",
         "duration_minutes": 70,
         "is_hard_day": true,
         "is_rest_day": false,
-        "purpose": "Trail-relevant muscular endurance and economy without excessive total volume; second and final hard session of the week.",
-        "session_type": "hills",
+        "purpose": "One focused stimulus this week to maintain fitness while keeping total hard days low.",
+        "session_type": "intervals",
+        "signal_ids": [
+          "forecast.readiness.status",
+          "forecast.readiness.score",
+          "forecast.overreach_risk.level",
+          "load.last7.training_load_hours"
+        ],
+        "target_intensity": "Hard but repeatable; stop the set if HR/legs drift excessively. Keep it controlled—not a test.",
+        "terrain": "Trainer or steady road segment with minimal interruptions.",
+        "title": "Quality day: bike intervals (controlled)",
+        "workout": "Warm-up 15 min easy. Main set: 5 x 4 min hard / 3 min easy. Cool-down 10–15 min easy."
+      },
+      {
+        "date": "2026-03-18",
+        "duration_minutes": 90,
+        "is_hard_day": false,
+        "is_rest_day": false,
+        "purpose": "Consolidate the quality day while building low-intensity volume safely.",
+        "session_type": "aerobic",
+        "signal_ids": [
+          "forecast.overreach_risk.level",
+          "load.last7.moving_time_hours",
+          "load.last7.training_load_hours"
+        ],
+        "target_intensity": "Comfortably easy aerobic; keep it smooth after yesterday’s quality.",
+        "terrain": "Mostly flat/rolling; avoid chasing climbs/segments.",
+        "title": "Easy aerobic ride (endurance reset)",
+        "workout": "90 min easy Ride. Keep cadence comfortable; no structured efforts."
+      },
+      {
+        "date": "2026-03-19",
+        "duration_minutes": 75,
+        "is_hard_day": false,
+        "is_rest_day": false,
+        "purpose": "Maintain running economy and add musculoskeletal resilience without adding another hard cardiovascular day.",
+        "session_type": "strength",
         "signal_ids": [
           "forecast.readiness.status",
           "forecast.overreach_risk.level",
-          "load.last7.training_load_hours",
-          "load.last7.sleep_days_with_data"
+          "load.baseline28.moving_time_hours",
+          "load.last7.training_load_hours"
         ],
-        "target_intensity": "Strong uphill effort, but never sprinting; smooth form. Full control on descents.",
-        "terrain": "Moderate hill (trail or road); prioritize good footing",
-        "title": "Quality 2: Short hill reps (running-specific strength)",
-        "workout": "Warm-up 20 min easy → 6 × 3 min uphill at strong effort with easy jog/walk back down recoveries → cool down easy to 70 min total."
+        "target_intensity": "Run easy; strength controlled (leave 2–3 reps in reserve).",
+        "terrain": "Flat to gentle trail/road for run; strength at home/gym.",
+        "title": "Short easy run + strength (trail durability)",
+        "workout": "Easy run 45 min (keep it relaxed). Then 25–30 min strength: split squats, RDLs, calf raises, step-downs, planks/side planks (2–3 sets each)."
+      },
+      {
+        "date": "2026-03-20",
+        "duration_minutes": 120,
+        "is_hard_day": false,
+        "is_rest_day": false,
+        "purpose": "Build endurance volume while keeping overall week controlled under the current overreach signal.",
+        "session_type": "aerobic",
+        "signal_ids": [
+          "forecast.overreach_risk.level",
+          "load.last7.moving_time_hours",
+          "load.last7.training_load_hours",
+          "load.baseline28.training_load_hours"
+        ],
+        "target_intensity": "Steady easy aerobic; finish feeling like you could continue.",
+        "terrain": "Rolling is fine; keep climbs strictly aerobic.",
+        "title": "Aerobic endurance ride (steady volume)",
+        "workout": "120 min aerobic Ride. Optional: 4 x 30s fast legs (not hard) with 4–5 min easy between if you feel fresh."
       }
     ],
     "weekly_totals": {
-      "planned_distance_km": 170.0,
-      "planned_elevation_m": 1600.0,
-      "planned_moving_time_hours": 8.2
+      "planned_distance_km": 210.0,
+      "planned_elevation_m": 1700.0,
+      "planned_moving_time_hours": 9.5
     }
   },
   "readiness": {
-    "rationale": "Deterministic readiness is STEADY with moderate overreach risk, driven by elevated 7d training load. With 0 sleep days recorded in the last 7 days, we can’t validate recovery (sleep/HRV/RHR), so the plan prioritizes a slightly conservative load and spacing hard sessions.",
+    "rationale": "Deterministic readiness: steady (score 56.2). Authoritative readiness is steady, but overreach risk is moderate because your recent 7d training load is elevated versus your rolling baseline. With no recent sleep/RHR/HRV data in the last 7 days, we’ll keep intensity limited (1 quality day) and keep the week under a small ramp while maintaining frequency.",
     "signal_ids": [
       "forecast.readiness.status",
       "forecast.readiness.score",
       "forecast.overreach_risk.level",
       "forecast.overreach_risk.score",
       "load.last7.training_load_hours",
+      "load.last7.moving_time_hours",
       "load.last7.sleep_days_with_data"
     ],
     "status": "steady"
   },
   "recovery": {
     "actions": [
-      "Sleep: prioritize consistency this week (fixed wake time). With no sleep data in the last 7 days, treat sleep as the #1 limiter and keep intensity capped if sleep quality is poor.",
-      "Fueling: for sessions ≥75 min, start carbs early and steadily; include protein + carbs within ~60 min after hard/long sessions.",
-      "Mobility/prehab (10–15 min, 4–6 days/wk): calves/ankles, hips/glutes, thoracic rotation; add light eccentric calf raises if you tolerate them well.",
-      "Hydration: arrive hydrated and include electrolytes on longer rides or warm days to avoid turning endurance into a stress session."
+      "Because last-7 sleep data are missing, treat recovery as a priority: aim to match your established 28-day sleep average (8.67 h) as closely as life allows.",
+      "Fuel the long trail day and the interval day: eat a carb-forward meal 2–3 h pre-session; during sessions >75–90 min, take steady carbs and fluids; include protein + carbs within ~60 min after.",
+      "Mobility: 10–15 min most days (calves/ankles, hips, glutes, thoracic spine). Keep it gentle, especially after the long trail day.",
+      "If legs feel beaten up from the prior week’s vertical, keep downhills conservative and consider swapping the 45 min run (2026-03-19) for an easy ride while keeping the strength session."
     ],
     "signal_ids": [
+      "recovery.last7.sleep_hours_mean",
+      "recovery.last28.sleep_hours_mean",
       "load.last7.sleep_days_with_data",
-      "forecast.overreach_risk.level",
-      "load.last7.training_load_hours",
-      "recovery.last28.sleep_hours_mean"
+      "forecast.overreach_risk.level"
     ]
   },
   "risks": [
     {
-      "message": "Moderate overreach risk with elevated 7d training load: keep this week controlled and avoid adding extra intensity/volume beyond the plan.",
+      "message": "Moderate overreach risk driven by elevated recent training load versus your rolling baseline; keep intensity limited to the single planned quality day and protect the rest day.",
       "severity": "medium",
       "signal_ids": [
         "forecast.overreach_risk.level",
@@ -277,33 +295,42 @@
       ]
     },
     {
-      "message": "Recovery visibility is limited: last 7 days show 0 sleep-days with data, so adjust day-to-day based on perceived fatigue and keep hard sessions repeatable rather than maximal.",
+      "message": "Recovery telemetry (sleep/RHR/HRV) is missing in the last 7 days, reducing confidence in day-to-day readiness; use subjective checks (motivation, soreness, irritability) to adjust down if needed.",
       "severity": "medium",
       "signal_ids": [
         "load.last7.sleep_days_with_data",
-        "forecast.readiness.status"
+        "recovery.last7.sleep_hours_mean",
+        "recovery.last7.rhr_mean",
+        "recovery.last7.hrv_mean"
+      ]
+    },
+    {
+      "message": "Large recent vertical exposure from trail running suggests higher muscle damage risk; keep the long trail day easy and control descents.",
+      "severity": "low",
+      "signal_ids": [
+        "load.last7.elevation_m"
       ]
     }
   ],
   "snapshot": {
     "baseline28": {
-      "activity_count": "",
-      "distance_km": "606.425",
-      "elevation_m": "5786.0",
+      "activity_count": "26",
+      "distance_km": "635.297",
+      "elevation_m": "5876",
       "hrv_mean": "",
-      "moving_time_hours": "36.697",
-      "rhr_mean": "",
-      "sleep_hours_mean": "8.7"
+      "moving_time_hours": "36.674",
+      "rhr_mean": "51.53",
+      "sleep_hours_mean": "8.67"
     },
     "last7": {
-      "activity_count": "6",
-      "distance_km": "181.909",
-      "elevation_m": "1949.0",
+      "activity_count": "7",
+      "distance_km": "233.024",
+      "elevation_m": "2069",
       "hrv_mean": "",
-      "moving_time_hours": "9.533",
+      "moving_time_hours": "11.324",
       "rhr_mean": "",
       "sleep_hours_mean": ""
     },
-    "notes": "Last 7d load is elevated and sleep data is missing for the entire last-7d window, so recovery signals can’t be confirmed. Keep this week controlled: maintain frequency, reduce spike-risk, and keep intensity to two focused sessions."
+    "notes": "Last 7 days were high-volume and high-load, driven by frequent rides plus one very vertical trail run. Sleep/RHR/HRV data are missing in the most recent 7-day window, so readiness is anchored primarily on the provided load-based forecast."
   }
 }

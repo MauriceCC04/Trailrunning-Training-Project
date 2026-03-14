@@ -1,149 +1,183 @@
-## 7‑day meal plan (aligned to your current load + recovery picture)
+## 7‑day meal plan (2026‑03‑14 → 2026‑03‑20) to support training + recovery
 
-### Load & recovery context (from your data)
-- **Last 7 days load is high vs your baseline**:
-  - `load.last7.training_load_hours` = **21.301** (vs rolling 7d mean 7.437; z=1.725 in forecast inputs)
-  - `load.last7.moving_time_hours` = **9.533 h**, `load.last7.distance_km` = **181.909 km**, `load.last7.elevation_m` = **1949 m**
-- **Readiness is “steady”**: `forecast.readiness.status` = **steady** (score `forecast.readiness.score` = 56.2)
-- **Overreach risk is moderate**: `forecast.overreach_risk.level` = **moderate** (score 66.0), driven by elevated 7d load.
-- **Sleep data is missing for the last 7 days**: `load.last7.sleep_days_with_data` = **0** (so we can’t tailor nutrition to recent sleep/HRV/RHR fluctuations—this plan leans recovery-supportive by default).
+### Load + recovery context (from your data)
+- **Recent load is high and above baseline:** last 7d **25.394 load_h** (`signal_id: load.last7.training_load_hours`) vs 28d total **82.268 load_h** (`signal_id: load.baseline28.training_load_hours`) ≈ ~20.6 load_h per 7d on average → you’ve been **above baseline**.
+- **Volume:** **11.324 h** moving time (`signal_id: load.last7.moving_time_hours`) and **233.024 km** (`signal_id: load.last7.distance_km`) in the last 7 days.
+- **Readiness (authoritative):** **steady** (`signal_id: forecast.readiness.status`) with **moderate overreach risk** (`signal_id: forecast.overreach_risk.level`).
+- **Sleep data gap:** **0 sleep days with data** in the last 7 days (`signal_id: load.last7.sleep_days_with_data`), so this plan leans on **load** + generally recovery-supportive nutrition. Your 28d sleep mean when available is **8.67 h** (`signal_id: recovery.last28.sleep_hours_mean`).
 
-### How to use this plan
-Because you didn’t provide an upcoming training schedule, I’m giving you a **7‑day template** matched to your current pattern (lots of riding + occasional long/vert trail).
-Assign days as:
-- **2 High‑carb days** (your longest/most intense sessions)
-- **3 Moderate‑carb days** (typical 60–120 min aerobic)
-- **1 Light day** (very easy/recovery)
-- **1 Rest day** (no training)
+### How to scale carbs (so this stays adaptive)
+- **Short/easy day (≤60–75 min):** 1 “carb fist” per meal.
+- **Moderate day (75–120 min):** 1–2 carb fists per meal + carb snack around training.
+- **Long/hard day (≥2 h or big climbing):** 2 carb fists per meal + *dedicated* pre/during/post carbs.
 
-If you swap your training days around, **swap the matching day’s meals** with it.
+(“Fist” = cooked grains/potatoes/fruit; “palm” = protein like eggs/meat/tofu; “thumb” = fats like olive oil/nut butter.)
 
 ---
 
-# Day-by-day plan (breakfast / lunch / dinner / snacks)
-Portions: use a simple plate method since biometrics aren’t provided.
-- **High‑carb day**: 1–2 fists carbs per meal + carb-focused snack(s)
-- **Moderate**: ~1 fist carbs per meal
-- **Light/Rest**: 0.5–1 fist carbs per meal (keep protein/veg strong)
+## Day-by-day schedule (meals + snacks + macro emphasis)
 
----
+### **Day 1 — Fri 2026‑03‑14 (Moderate carb; “rebuild” day)**
+**Breakfast:**
+- Oats cooked with milk (or soy milk), banana + berries, chia/flax
+- Greek yogurt (or soy yogurt) on the side
 
-## Day 1 — Moderate‑carb (typical aerobic day)
-**Breakfast:** Greek yogurt bowl + oats/muesli + banana + honey + nuts
-**Lunch:** Chicken (or tofu) rice bowl: rice + beans + salsa + avocado + veggies
-**Dinner:** Salmon (or tempeh) + potatoes + big salad + olive oil
+**Lunch:**
+- Rice bowl: rice + chicken/tofu + roasted veg + olive oil + salsa
+
+**Dinner:**
+- Salmon (or lentils) + potatoes + salad (olive oil)
+- Add bread if training was >90 min
+
 **Snacks:**
-- Fruit + handful of trail mix
-- Pre‑session (if needed): toast + jam
-- Post‑session (within 60 min): chocolate milk or yogurt + fruit
+- Pre‑session (if you train): banana + small yogurt
+- Post‑session: chocolate milk or yogurt + granola (within ~60 min)
+- Evening: kiwi + cottage cheese / soy pudding
 
-**Macro emphasis:** Moderate carb, steady protein.
+**Macro emphasis:** moderate carb, high protein distribution (hit protein 3–4 times today).
 
 ---
 
-## Day 2 — High‑carb (your longest ride/trail/vert day)
-**Breakfast (2–3 h pre):** Big oats: oats + milk + banana + raisins + maple + pinch of salt
-**During session (if >90 min):**
-- Aim **carbs each hour** (sports drink/gels/banana) + fluids (see hydration section)
-**Lunch (post):** Large sandwich/wrap (turkey/egg/tofu) + extra bread/tortilla + fruit
-**Dinner:** Pasta night: pasta + meat sauce (or lentil sauce) + veggies + parmesan
+### **Day 2 — Sat 2026‑03‑15 (Higher carb; “long day / big aerobic” fuel)**
+**Breakfast (2–3 h pre):**
+- Bagel + eggs (or tofu scramble) + fruit
+- Small glass of juice if appetite allows
+
+**During (if >90 min):**
+- Aim **30–60 g carbs/hour** (drink mix, gels, chews, bananas)
+- Add electrolytes (see Hydration section)
+
+**Lunch (post):**
+- Burrito bowl: rice + beans + meat/tofu + corn + guac + extra tortillas/chips
+
+**Dinner:**
+- Pasta with tomato/meat (or tofu) sauce + parmesan
+- Side salad + bread
+
 **Snacks:**
-- Immediately post: smoothie (milk/alt + banana + berries) + whey/soy protein
-- Later: cereal + milk, or rice cakes + nut butter + honey
+- Post‑session “starter” (ASAP): carbs + protein (e.g., smoothie: milk/soy + banana + whey/soy protein)
+- Afternoon: pretzels + hummus
 
-**Macro emphasis:** High carb (this is where you “pay back” the work).
+**Macro emphasis:** **higher carb** (this is your glycogen-repletion day).
 
 ---
 
-## Day 3 — Light‑carb (easy spin/jog or shorter recovery day)
-**Breakfast:** 2–3 eggs (or tofu scramble) + toast + fruit
-**Lunch:** Big salad + quinoa (smaller portion) + tuna/chickpeas + olive oil
-**Dinner:** Stir-fry: lots of veg + protein + **smaller** rice portion
+### **Day 3 — Sun 2026‑03‑16 (Moderate-to-higher carb; “support second day” or trail focus)**
+**Breakfast:**
+- Pancakes/waffles + yogurt + berries (or oatmeal if you prefer)
+
+**Lunch:**
+- Big sandwich/wrap (turkey/tuna or tofu) + soup + fruit
+
+**Dinner:**
+- Stir-fry: rice/noodles + mixed veg + chicken/tofu + sesame/soy
+
 **Snacks:**
-- Cottage cheese (or soy yogurt) + berries
-- Dark chocolate + nuts (small)
+- Trail-friendly: trail mix + fruit
+- If legs feel heavy: add an extra carb snack mid-afternoon (granola bar + fruit)
 
-**Macro emphasis:** Lighter carbs, high micronutrients; keep protein consistent.
+**Macro emphasis:** moderate-to-higher carb (especially if you stack training days).
 
 ---
 
-## Day 4 — Moderate‑carb
-**Breakfast:** Overnight oats + chia + berries
-**Lunch:** Leftover stir-fry + rice (normal portion)
-**Dinner:** Tacos: tortillas + beef/beans + cheese + salsa + slaw
+### **Day 4 — Mon 2026‑03‑17 (Moderate carb; “normal training weekday” support)**
+**Breakfast:**
+- Overnight oats + berries + nuts
+- Coffee/tea if normal for you
+
+**Lunch:**
+- Quinoa or couscous salad: chickpeas + feta (or tofu) + olive oil + veggies + pita
+
+**Dinner:**
+- Chili (beans + meat/tofu) over rice + toppings
+
 **Snacks:**
-- Pre: banana
-- Post: yogurt drink + granola
+- Pre‑session: applesauce pouch or banana
+- Post‑session: yogurt + cereal (or protein shake + fruit)
 
-**Macro emphasis:** Moderate carb.
+**Macro emphasis:** moderate carb, steady protein.
 
 ---
 
-## Day 5 — High‑carb (2nd key day: longer endurance or harder workout)
-**Breakfast (pre):** Bagel + peanut butter + banana + yogurt
-**During (if long):** carbs + electrolytes (see hydration)
-**Lunch (post):** Rice + eggs (or tofu) + soy sauce + veggies + fruit
-**Dinner:** Curry + rice: chicken/chickpeas + coconut curry + rice + naan (optional)
+### **Day 5 — Tue 2026‑03‑18 (Higher carb *around training*; “quality/intensity support”)**
+**Breakfast:**
+- Oats + honey + banana
+- Eggs/tofu on the side (keep fats moderate pre-session)
+
+**Pre‑session (30–60 min):**
+- Rice cake + jam or a small bar
+
+**Post‑session (within ~60 min):**
+- 20–40 g protein + carbs (smoothie or chocolate milk + bagel)
+
+**Lunch:**
+- Noodle bowl/ramen style: noodles + lean protein + broth + veg
+
+**Dinner:**
+- Tacos: tortillas + fish/chicken/tofu + beans + rice + salsa
+
 **Snacks:**
-- Recovery: 3:1-ish carb:protein (e.g., smoothie + pretzels)
-- Evening: cereal or oatmeal if hungry
+- Fruit + pretzels; add extra carbs if session was hard/long
 
-**Macro emphasis:** High carb; prioritize recovery timing.
+**Macro emphasis:** **carb-timed higher** (not necessarily huge all day, but *deliberate* pre/during/post).
 
 ---
 
-## Day 6 — Moderate‑carb (steady aerobic)
-**Breakfast:** Pancakes/waffles + berries + yogurt (easy way to get carbs in)
-**Lunch:** Lentil soup + bread + side salad
-**Dinner:** Pizza (homemade or store) + big salad (don’t skip veg)
+### **Day 6 — Wed 2026‑03‑19 (Lighter/moderate carb; “recovery / lower load day”)**
+Given elevated recent load (`signal_id: load.last7.training_load_hours`) and moderate overreach risk (`signal_id: forecast.overreach_risk.level`), this is your “absorb the work” nutrition day.
+
+**Breakfast:**
+- Greek yogurt (or soy) parfait: granola + berries + pumpkin seeds
+
+**Lunch:**
+- Big mixed salad + bread: greens + quinoa + tuna/eggs/tofu + olive oil
+
+**Dinner:**
+- Veg-forward: roasted veg + protein (chicken/tofu) + *smaller* portion of rice/potato
+
 **Snacks:**
-- Fruit + jerky (or edamame)
-- Hummus + crackers
+- Nuts + fruit
+- If hunger is high, add a bowl of cereal or extra fruit (don’t under-eat)
 
-**Macro emphasis:** Moderate carb, higher total calories if you’re stacking volume.
+**Macro emphasis:** lighter/moderate carbs, high micronutrients, protein steady.
 
 ---
 
-## Day 7 — Rest day (lowest carb, highest “rebuild” focus)
-**Breakfast:** Omelet (or tofu scramble) + veggies + small toast
-**Lunch:** Protein-heavy bowl: greens + beans + chicken/tofu + seeds + olive oil; small grain portion
-**Dinner:** Roast/air-fry: veggies + protein + small potato or bread
+### **Day 7 — Thu 2026‑03‑20 (Moderate carb; “prime for the next block”)**
+**Breakfast:**
+- Toast + peanut butter + banana
+- Yogurt or eggs/tofu
+
+**Lunch:**
+- Rice + veggies + protein + olive oil (simple repeatable bowl)
+
+**Dinner:**
+- Pasta or risotto + protein + veg (slightly higher carb at dinner helps replenish)
+
 **Snacks:**
-- Yogurt/cottage cheese + fruit
-- Nuts + herbal tea
+- Pre‑session: banana or applesauce
+- Post‑session: yogurt drink + granola bar
 
-**Macro emphasis:** Lower carb, high protein, high produce, high hydration.
-
----
-
-# Hydration guidance + timing (simple, athlete-friendly)
-**Daily baseline:**
-- Drink regularly through the day; include **electrolytes** if you’re training most days (you’ve had **6 activities/7d**: `load.last7.activity_count` = 6).
-
-**Pre-session (60–120 min):**
-- 500–700 ml water; add electrolytes if you tend to sweat a lot.
-
-**During training:**
-- **~500–750 ml/hour**, more if hot.
-- If **>90 min**: add electrolytes + carbohydrate. For long days, aim for a steady carb drip (sports drink + gels/chews/banana).
-
-**Post-session (first 60 min):**
-- Fluids + a carb/protein hit (examples above).
-- Then a full meal within ~2–3 hours.
+**Macro emphasis:** moderate carb with a slightly higher-carb dinner.
 
 ---
 
-# Recovery-supportive nutrition priorities (given moderate overreach risk)
-Because load is elevated (`load.last7.training_load_hours` high vs baseline; `forecast.overreach_risk.level` = moderate) and sleep data is missing (`load.last7.sleep_days_with_data` = 0), default to:
-- **Protein at every meal** (and a protein-rich snack on harder days).
-- **Carbs concentrated around training** (especially on High‑carb days).
-- **More colorful produce + fats** on Rest/Light days (anti-“empty calories” approach).
-- **Evening routine**: finish the last big meal 2–3 h before bed; if hungry, choose an easy snack (yogurt + fruit, cereal + milk).
+## Hydration guidance + timing (simple rules)
+Because your recent training time is high (`signal_id: load.last7.moving_time_hours`) and HR intensity looks meaningful on multiple rides, treat hydration as performance nutrition:
+
+- **Daily baseline:** drink to pale-yellow urine; include **salted foods**.
+- **Pre‑session (60–90 min):** ~500 ml fluids; include sodium if you’re a salty sweater.
+- **During training**
+  - **<60 min easy:** water is fine.
+  - **60–120+ min:** target **500–750 ml/hour** + **electrolytes**.
+  - **Carbs:** **30–60 g/hour** for steady endurance; consider more only if you *know* you tolerate it.
+- **Post:** 500–750 ml over the next hour + salty meal.
 
 ---
 
-## Data notes / limitations
-- No body weight/sex/age provided (`formatted_personal_data.json` empty), so portions are **general** (plate-based, not grams/kg).
-- Last 7 days have **no sleep entries** (`load.last7.sleep_days_with_data` = 0), so I can’t adjust day-to-day fueling based on recent sleep duration/HRV/RHR trends; I used **load + forecast** signals (`forecast.readiness.status`, `forecast.overreach_risk.level`) to bias the plan toward recovery.
+## Data notes / limits (what I did & didn’t assume)
+- No biometrics provided (weight/sex/age are blank), so portions are given as **plate-based ranges**, not grams/kg.
+- Sleep/recovery trends could not be used for the last 7 days because **sleep data is missing** (`signal_id: load.last7.sleep_days_with_data`; `signal_id: recovery.last7.sleep_hours_mean` is null). I leaned on **load** and your readiness/overreach flags: **steady readiness** (`signal_id: forecast.readiness.status`) with **moderate overreach risk** (`signal_id: forecast.overreach_risk.level`).
+- Load classification relied on rollups: last 7d load is elevated (`signal_id: load.last7.training_load_hours`) relative to your 28d baseline (`signal_id: load.baseline28.training_load_hours`).
 
-If you tell me what your *next 7 days of training* roughly look like (which days are long/hard/rest), I’ll map this template to specific dates and tighten the carb targets around each key session.
+If you tell me what your *next 7 days of training sessions* look like (even just duration + whether any are hard), I can pin the “higher-carb days” to the exact days and tighten the timing.
