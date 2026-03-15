@@ -190,8 +190,6 @@ def _compute_after_unix(existing: list[dict[str, Any]], meta: dict[str, Any]) ->
     Prefer meta.max_start_date_ts (UTC), otherwise compute from existing activities,
     otherwise fall back to NOW - lookback_days.
     """
-    now_ts = int(time.time())
-
     max_ts = meta.get("max_start_date_ts")
     if isinstance(max_ts, (int, float)) and max_ts > 0:
         return max(0, int(max_ts) - AFTER_BUFFER_SECONDS)
@@ -207,7 +205,7 @@ def _compute_after_unix(existing: list[dict[str, Any]], meta: dict[str, Any]) ->
     if best > 0:
         return max(0, best - AFTER_BUFFER_SECONDS)
 
-    return max(0, now_ts - DEFAULT_LOOKBACK_DAYS * 24 * 3600)
+    return 0
 
 
 def fetch_activities_incremental(
