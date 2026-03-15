@@ -15,7 +15,7 @@ def _ok(label: str, msg: str = "") -> None:
 
 
 def _warn(label: str, msg: str = "") -> None:
-    print(f"⚠️  {label}" + (f" - {msg}" if msg else ""))
+    print(f"⚠️ {label}" + (f" - {msg}" if msg else ""))
 
 
 def _bad(label: str, msg: str = "") -> None:
@@ -40,8 +40,8 @@ def _detect_provider(explicit: Optional[str] = None) -> str:
 
 def main() -> None:
     print("TrailTraining doctor\n")
-
     config.ensure_directories()
+
     profile = os.getenv("TRAILTRAINING_PROFILE", "default")
     base_dir = Path(config.BASE_DIR)
     _ok("Profile", profile)
@@ -122,16 +122,22 @@ def main() -> None:
             )
             issues += 1
 
-    # ---- Optional OpenAI ----
-    if os.getenv("OPENAI_API_KEY") or os.getenv("TRAILTRAINING_OPENAI_API_KEY"):
-        _ok("OpenAI API key set (coach enabled)")
+    # ---- Optional OpenRouter ----
+    if (
+        os.getenv("OPENROUTER_API_KEY") or os.getenv("TRAILTRAINING_OPENROUTER_API_KEY") or ""
+    ).strip():
+        _ok("OpenRouter API key set (coach enabled)")
     else:
-        _warn("OpenAI API key not set", "Coach won't run until you set OPENAI_API_KEY.")
+        _warn(
+            "OpenRouter API key not set",
+            "Coach won't run until you set OPENROUTER_API_KEY.",
+        )
 
     print("\nSummary:")
     if issues:
         _bad("Doctor found issues", f"{issues} blocking issue(s).")
         raise SystemExit(1)
+
     _ok("Doctor OK", "No blocking issues found.")
     raise SystemExit(0)
 

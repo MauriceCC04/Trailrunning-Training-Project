@@ -29,7 +29,7 @@ This project is an end-to-end ML-adjacent pipeline built around three ideas:
 
 - **Structured contracts prevent schema drift.** All artifacts (training plans,
   evaluation reports, forecasts) are validated against Pydantic v2 models with
-  strict schemas. The OpenAI structured output call uses a matching JSON Schema.
+  strict schemas. The OpenRouter structured output call uses a matching JSON Schema.
 
 ## Quick look: inspect sample outputs
 
@@ -153,7 +153,7 @@ To run the full pipeline on your own data, you need:
 - one wellness source:
   - GarminDB, or
   - Intervals.icu API access
-- an OpenAI API key for `coach`
+- an OpenRouter API key for `coach`
 
 ## Installation
 
@@ -212,7 +212,8 @@ GARMIN_PASSWORD="..."
 # INTERVALS_API_KEY="..."
 # INTERVALS_ATHLETE_ID="0"
 
-OPENAI_API_KEY="..."
+OPENROUTER_API_KEY="sk-or-v1-..."
+TRAILTRAINING_LLM_MODEL="openai/gpt-5.2"
 ```
 
 By default, per-profile data is stored under:

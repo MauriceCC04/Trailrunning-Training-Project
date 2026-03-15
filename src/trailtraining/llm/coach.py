@@ -27,6 +27,88 @@ from trailtraining.util.state import load_json, save_json
 log = logging.getLogger(__name__)
 
 
+def _openrouter_api_key() -> str:
+    return (
+        os.getenv("OPENROUTER_API_KEY") or os.getenv("TRAILTRAINING_OPENROUTER_API_KEY") or ""
+    ).strip()
+
+
+def _openrouter_headers() -> dict[str, str]:
+    headers: dict[str, str] = {}
+    site_url = (os.getenv("TRAILTRAINING_OPENROUTER_SITE_URL") or "").strip()
+    app_name = (os.getenv("TRAILTRAINING_OPENROUTER_APP_NAME") or "trailtraining").strip()
+
+    if site_url:
+        headers["HTTP-Referer"] = site_url
+    if app_name:
+        headers["X-OpenRouter-Title"] = app_name
+
+    return headers
+
+
+def _make_openrouter_client() -> OpenAI:
+    api_key = _openrouter_api_key()
+    if not api_key:
+        raise RuntimeError(
+            "Missing OpenRouter API key. Set OPENROUTER_API_KEY "
+            "(or TRAILTRAINING_OPENROUTER_API_KEY).\n"
+            "Example:\n"
+            "  export OPENROUTER_API_KEY='sk-or-v1-...'\n"
+            "Then rerun: trailtraining coach --prompt training-plan"
+        )
+
+    return OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=api_key,
+        default_headers=_openrouter_headers(),
+    )
+
+
+def _responses_create_compat(client: OpenAI, kwargs: dict[str, Any]) -> Any:
+    """
+    Retry a Responses API call with progressively simpler payloads when a
+    model/provider rejects optional fields.
+    """
+    attempts: list[dict[str, Any]] = [dict(kwargs)]
+    text_cfg = dict(kwargs.get("text") or {})
+
+    if "verbosity" in text_cfg:
+        kw = dict(kwargs)
+        text2 = dict(text_cfg)
+        text2.pop("verbosity", None)
+        if text2:
+            kw["text"] = text2
+        else:
+            kw.pop("text", None)
+        attempts.append(kw)
+
+    if "reasoning" in kwargs:
+        kw = dict(kwargs)
+        kw.pop("reasoning", None)
+        attempts.append(kw)
+
+    if "reasoning" in kwargs and "verbosity" in text_cfg:
+        kw = dict(kwargs)
+        kw.pop("reasoning", None)
+        text2 = dict(text_cfg)
+        text2.pop("verbosity", None)
+        if text2:
+            kw["text"] = text2
+        else:
+            kw.pop("text", None)
+        attempts.append(kw)
+
+    last_exc: Optional[Exception] = None
+    for attempt in attempts:
+        try:
+            return client.responses.create(**attempt)
+        except Exception as exc:
+            last_exc = exc
+
+    assert last_exc is not None
+    raise last_exc
+
+
 def _forecast_capability_block(det_forecast: dict[str, Any]) -> list[str]:
     if not isinstance(det_forecast, dict):
         return []
@@ -546,39 +628,42 @@ def _call_responses_best_effort_schema(
     client: OpenAI, kwargs: dict[str, Any], schema: dict[str, Any]
 ) -> Any:
     """
-    Best-effort "structured output" call:
-    - Try text.format=json_schema
-    - Try response_format=json_schema
-    - Fallback: plain call
-    We only swallow TypeError (unsupported kwarg).
+    Best-effort structured-output call for OpenRouter's Responses API.
+    Try Responses-style text.format first, then OpenRouter's response_format
+    json_schema shape, then fall back to a plain call.
     """
-    # Attempt A: text.format
+    schema_name = schema.get("name")
+    schema_body = schema.get("schema")
+
     try:
         kw = dict(kwargs)
         text_cfg = dict(kw.get("text") or {})
         text_cfg["format"] = {
             "type": "json_schema",
-            "name": schema.get("name"),
-            "schema": schema.get("schema"),
+            "name": schema_name,
+            "schema": schema_body,
+            "strict": True,
         }
         kw["text"] = text_cfg
-        return client.responses.create(**kw)
-    except TypeError:
+        return _responses_create_compat(client, kw)
+    except Exception:
         pass
 
-    # Attempt B: response_format
     try:
         kw = dict(kwargs)
         kw["response_format"] = {
             "type": "json_schema",
-            "name": schema.get("name"),
-            "schema": schema.get("schema"),
+            "json_schema": {
+                "name": schema_name,
+                "strict": True,
+                "schema": schema_body,
+            },
         }
-        return client.responses.create(**kw)
-    except TypeError:
+        return _responses_create_compat(client, kw)
+    except Exception:
         pass
 
-    return client.responses.create(**kwargs)
+    return _responses_create_compat(client, kwargs)
 
 
 def _prompt_instruction(prompt_name: str, *, style: str) -> str:
@@ -719,7 +804,7 @@ def _build_prompt_text(
 @dataclass(frozen=True)
 class CoachConfig:
     # Safe constants as dataclass defaults (no function calls)
-    model: str = "gpt-5.2"
+    model: str = "openai/gpt-5.2"
     reasoning_effort: str = "medium"  # none|low|medium|high|xhigh
     verbosity: str = "medium"  # low|medium|high
     days: int = 60
@@ -816,16 +901,7 @@ def run_coach_brief(
         detail_days=detail_days,
     )
 
-    api_key = os.getenv("OPENAI_API_KEY") or os.getenv("TRAILTRAINING_OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "Missing OpenAI API key. Set OPENAI_API_KEY (recommended) or TRAILTRAINING_OPENAI_API_KEY.\n"
-            "Example:\n"
-            "  export OPENAI_API_KEY='sk-...'\n"
-            "Then rerun: trailtraining coach --prompt training-plan"
-        )
-
-    client = OpenAI(api_key=api_key)
+    client = _make_openrouter_client()
 
     # Use style-specific system instructions
     system_instructions = get_system_prompt(cfg.style)
@@ -845,7 +921,7 @@ def run_coach_brief(
     if prompt == "training-plan":
         resp = _call_responses_best_effort_schema(client, kwargs, TRAINING_PLAN_SCHEMA)
     else:
-        resp = client.responses.create(**kwargs)
+        resp = _responses_create_compat(client, kwargs)
 
     out_text = getattr(resp, "output_text", None) or str(resp)
 
@@ -871,7 +947,7 @@ def run_coach_brief(
                 "reasoning": {"effort": "none"},
                 "text": {"verbosity": "low"},
             }
-            repair_resp = client.responses.create(**repair_kwargs)
+            repair_resp = _responses_create_compat(client, repair_kwargs)
             repaired = getattr(repair_resp, "output_text", None) or str(repair_resp)
             raw2 = _extract_json_object(repaired)
             obj = ensure_training_plan_shape(json.loads(raw2))
