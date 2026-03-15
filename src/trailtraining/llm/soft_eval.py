@@ -106,16 +106,28 @@ SOFT_EVAL_SCHEMA: dict[str, Any] = {
                         "rubric": {"type": "string"},
                         "marker_id": {"type": "string"},
                         "marker": {"type": "string"},
-                        "verdict": {"type": "string", "enum": ["pass", "partial", "fail"]},
+                        "verdict": {
+                            "type": "string",
+                            "enum": ["pass", "partial", "fail"],
+                        },
                         "score": {"type": "number", "minimum": 0, "maximum": 5},
                         "evidence": {"type": "string"},
                         "improvement_hint": {"type": "string"},
                     },
                 },
             },
-            "strengths": {"type": "array", "items": {"type": "string"}},
-            "concerns": {"type": "array", "items": {"type": "string"}},
-            "suggested_improvements": {"type": "array", "items": {"type": "string"}},
+            "strengths": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+            "concerns": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+            "suggested_improvements": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
         },
     },
 }
@@ -147,7 +159,10 @@ def _marker_only_schema() -> dict[str, Any]:
                             "rubric": {"type": "string"},
                             "marker_id": {"type": "string"},
                             "marker": {"type": "string"},
-                            "verdict": {"type": "string", "enum": ["pass", "partial", "fail"]},
+                            "verdict": {
+                                "type": "string",
+                                "enum": ["pass", "partial", "fail"],
+                            },
                             "score": {"type": "number", "minimum": 0, "maximum": 5},
                             "evidence": {"type": "string"},
                             "improvement_hint": {"type": "string"},
@@ -192,6 +207,96 @@ def _normalize_verdict(value: Any, score: float) -> str:
     if score >= 2.0:
         return "partial"
     return "fail"
+
+
+def _clean_string_list(raw: Any) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+
+    for item in raw or []:
+        s = " ".join(str(item).split()).strip()
+        if not s:
+            continue
+        key = s.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(s)
+
+    return out
+
+
+def _build_feedback_lists(
+    raw: dict[str, Any],
+    rubric_scores: dict[str, dict[str, Any]],
+    marker_results: list[dict[str, Any]],
+) -> tuple[list[str], list[str], list[str]]:
+    strengths = _clean_string_list(raw.get("strengths"))
+    concerns = _clean_string_list(raw.get("concerns"))
+    improvements = _clean_string_list(raw.get("suggested_improvements"))
+
+    if len(strengths) < 2:
+        for _rid, item in sorted(
+            rubric_scores.items(),
+            key=lambda kv: float((kv[1] or {}).get("score", 0)),
+            reverse=True,
+        ):
+            reasoning = str((item or {}).get("reasoning", "")).strip()
+            if reasoning and reasoning not in strengths:
+                strengths.append(reasoning)
+            if len(strengths) >= 3:
+                break
+
+    weaker_markers = sorted(
+        marker_results,
+        key=lambda m: float(m.get("score", 0)),
+    )
+
+    if len(concerns) < 1:
+        for m in weaker_markers:
+            evidence = str(m.get("evidence", "")).strip()
+            marker = str(m.get("marker", "")).strip()
+            if evidence:
+                text = f"{marker}: {evidence}" if marker else evidence
+                if text not in concerns:
+                    concerns.append(text)
+            if len(concerns) >= 2:
+                break
+
+    if len(improvements) < 2:
+        for m in weaker_markers:
+            hint = str(m.get("improvement_hint", "")).strip()
+            if hint and hint not in improvements:
+                improvements.append(hint)
+            if len(improvements) >= 3:
+                break
+
+    if len(strengths) < 2:
+        fallback_strengths = [
+            "The plan contains concrete and executable session structure.",
+            "The week shows a clear training purpose across sessions.",
+        ]
+        for s in fallback_strengths:
+            if s not in strengths:
+                strengths.append(s)
+            if len(strengths) >= 2:
+                break
+
+    if len(concerns) < 1:
+        concerns = ["Some parts of the plan could be more specific or better justified."]
+
+    if len(improvements) < 2:
+        fallback_improvements = [
+            "Add more specific execution guidance for key sessions.",
+            "Clarify progression and recovery logic where useful.",
+        ]
+        for s in fallback_improvements:
+            if s not in improvements:
+                improvements.append(s)
+            if len(improvements) >= 2:
+                break
+
+    return strengths[:4], concerns[:3], improvements[:4]
 
 
 def _expected_markers(style: str) -> list[dict[str, str]]:
@@ -311,6 +416,10 @@ def _build_soft_eval_prompt(
             "- Include marker_results for every supplied marker.",
             "- Do not leave summary blank.",
             "- Use concrete evidence from the plan.",
+            "- strengths: provide 2 to 4 concrete strengths grounded in the plan.",
+            "- concerns: provide at least 1 concrete concern, even if minor.",
+            "- suggested_improvements: provide 2 to 4 specific improvements tied to concerns or lower-scored markers.",
+            "- Avoid empty arrays unless absolutely unavoidable.",
         ]
     )
 
@@ -358,6 +467,22 @@ def _build_marker_only_prompt(
     )
 
 
+def _looks_internally_broken_soft_eval(
+    summary: str,
+    rubric_scores: dict[str, dict[str, Any]],
+    marker_results: list[dict[str, Any]],
+) -> bool:
+    rubric_vals = [float((item or {}).get("score", 0)) for item in rubric_scores.values()]
+    marker_vals = [float(item.get("score", 0)) for item in marker_results]
+    return (
+        bool(str(summary).strip())
+        and bool(rubric_vals)
+        and bool(marker_vals)
+        and max(rubric_vals) == 0.0
+        and max(marker_vals) == 0.0
+    )
+
+
 def _parse_soft_eval_json(out_text: str) -> dict[str, Any]:
     raw = json.loads(_extract_json_object(out_text))
     if not isinstance(raw, dict):
@@ -379,6 +504,68 @@ def _validate_soft_eval_completeness(raw: dict[str, Any]) -> None:
     missing = sorted(expected - actual)
     if missing:
         raise ValueError(f"Soft evaluator omitted rubric ids: {missing}")
+
+
+def _rubric_scores_look_usable(raw: Any, *, style: str) -> bool:
+    if not isinstance(raw, dict):
+        return False
+
+    for rubric in get_default_rubrics(style):
+        item = raw.get(rubric.rubric_id)
+        if not isinstance(item, dict):
+            return False
+
+        raw_score = item.get("score")
+        if raw_score is None:
+            return False
+
+        try:
+            score = float(raw_score)
+        except (TypeError, ValueError):
+            return False
+
+        if not 0.0 <= score <= 100.0:
+            return False
+
+    return True
+
+
+def _derive_rubric_scores_from_markers(
+    marker_results: list[dict[str, Any]],
+    *,
+    style: str,
+) -> dict[str, dict[str, Any]]:
+    rubrics = get_default_rubrics(style)
+    by_rubric: dict[str, list[float]] = {r.rubric_id: [] for r in rubrics}
+
+    for item in marker_results:
+        rubric_id = str(item.get("rubric", "") or "").strip()
+        if rubric_id not in by_rubric:
+            continue
+        try:
+            score = float(item.get("score", 0))
+        except (TypeError, ValueError):
+            score = 0.0
+        score = max(0.0, min(5.0, score))
+        by_rubric[rubric_id].append(score)
+
+    out: dict[str, dict[str, Any]] = {}
+    for rubric in rubrics:
+        vals = by_rubric.get(rubric.rubric_id, [])
+        if vals:
+            rubric_score = round((sum(vals) / len(vals)) * 20.0, 1)
+            reasoning = (
+                "Derived from marker scores because the model omitted or malformed rubric_scores."
+            )
+        else:
+            rubric_score = 0.0
+            reasoning = "No marker evidence available to derive a rubric score."
+        out[rubric.rubric_id] = {
+            "score": rubric_score,
+            "reasoning": reasoning,
+        }
+
+    return out
 
 
 def _parse_and_validate_soft_eval_output(out_text: str) -> dict[str, Any]:
@@ -501,9 +688,36 @@ def evaluate_training_plan_soft(
             primary_goal=primary_goal,
         )
 
-    rubric_scores = _normalize_rubric_scores(raw.get("rubric_scores"), style=style)
-    overall_score = weighted_score_from_rubric_scores(rubric_scores, style=style)
     marker_results = _normalize_marker_results(marker_results_raw, style=style)
+
+    if _rubric_scores_look_usable(raw.get("rubric_scores"), style=style):
+        rubric_scores = _normalize_rubric_scores(raw.get("rubric_scores"), style=style)
+    else:
+        log.warning(
+            "Soft eval returned missing or malformed rubric_scores; deriving rubric scores from marker_results."
+        )
+        rubric_scores = _derive_rubric_scores_from_markers(
+            marker_results,
+            style=style,
+        )
+
+    overall_score = weighted_score_from_rubric_scores(rubric_scores, style=style)
+
+    if _looks_internally_broken_soft_eval(
+        str(raw.get("summary", "") or ""),
+        rubric_scores,
+        marker_results,
+    ):
+        raise ValueError(
+            "Soft evaluator returned an internally inconsistent result "
+            "(non-empty narrative with all-zero scores)."
+        )
+
+    strengths, concerns, suggested_improvements = _build_feedback_lists(
+        raw,
+        rubric_scores,
+        marker_results,
+    )
 
     payload = {
         "model": cfg.model,
@@ -515,11 +729,9 @@ def evaluate_training_plan_soft(
         "confidence": _normalize_confidence(raw.get("confidence")),
         "rubric_scores": rubric_scores,
         "marker_results": marker_results,
-        "strengths": [str(x).strip() for x in (raw.get("strengths") or []) if str(x).strip()],
-        "concerns": [str(x).strip() for x in (raw.get("concerns") or []) if str(x).strip()],
-        "suggested_improvements": [
-            str(x).strip() for x in (raw.get("suggested_improvements") or []) if str(x).strip()
-        ],
+        "strengths": strengths,
+        "concerns": concerns,
+        "suggested_improvements": suggested_improvements,
     }
 
     return SoftAssessmentArtifact.model_validate(payload).model_dump(mode="json")

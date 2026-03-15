@@ -263,6 +263,42 @@ def cmd_eval_coach(args):
     raise SystemExit(0)
 
 
+def cmd_revise_plan(args):
+    from trailtraining import config
+    from trailtraining.llm.coach import CoachConfig
+    from trailtraining.llm.revise import RevisePlanConfig, run_revise_plan
+
+    base_cfg = CoachConfig.from_env()
+    revise_cfg = RevisePlanConfig(
+        model=args.model or base_cfg.model,
+        reasoning_effort=args.reasoning_effort or base_cfg.reasoning_effort,
+        verbosity=args.verbosity or base_cfg.verbosity,
+        temperature=args.temperature,
+        primary_goal=args.goal or base_cfg.primary_goal,
+    )
+
+    input_path = args.input or str(
+        Path(config.PROMPTING_DIRECTORY) / "coach_brief_training-plan.json"
+    )
+    report_path = args.report or str(Path(config.PROMPTING_DIRECTORY) / "eval_report.json")
+
+    text, out_path = run_revise_plan(
+        cfg=revise_cfg,
+        input_plan_path=input_path,
+        eval_report_path=report_path,
+        output_path=args.output,
+        rollups_path=args.rollups,
+    )
+
+    print(text)
+    if out_path:
+        print(f"\n[Saved] {out_path}")
+        p = Path(out_path)
+        txt_p = p.parent / f"{p.stem}.txt"
+        if txt_p.exists():
+            print(f"[Saved] {txt_p}")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="trailtraining", description="TrailTraining CLI")
 
@@ -431,6 +467,55 @@ def main(argv=None):
         choices=["low", "medium", "high"],
     )
     eval_p.set_defaults(func=cmd_eval_coach)
+
+    revise_p = sub.add_parser(
+        "revise-plan",
+        help="Revise coach_brief_training-plan.json using eval_report.json",
+    )
+    revise_p.add_argument(
+        "--input",
+        default=None,
+        help="Path to original coach_brief_training-plan.json (default: <prompting_dir>/coach_brief_training-plan.json)",
+    )
+    revise_p.add_argument(
+        "--report",
+        default=None,
+        help="Path to eval_report.json (default: <prompting_dir>/eval_report.json)",
+    )
+    revise_p.add_argument(
+        "--rollups",
+        default=None,
+        help="Optional path to combined_rollups.json (default: same dir as input plan if present)",
+    )
+    revise_p.add_argument(
+        "--output",
+        default=None,
+        help="Output JSON path (default: <prompting_dir>/revised-plan.json)",
+    )
+    revise_p.add_argument("--model", default=None)
+    revise_p.add_argument(
+        "--reasoning-effort",
+        default=None,
+        choices=["none", "low", "medium", "high", "xhigh"],
+    )
+    revise_p.add_argument(
+        "--verbosity",
+        default=None,
+        choices=["low", "medium", "high"],
+    )
+    revise_p.add_argument(
+        "--temperature",
+        type=float,
+        default=None,
+        help="Only used if --reasoning-effort none.",
+    )
+    revise_p.add_argument(
+        "--goal",
+        default=None,
+        help="Optional primary-goal override for the revised plan.",
+    )
+    revise_p.set_defaults(func=cmd_revise_plan)
+
     intervals_p = sub.add_parser(
         "fetch-intervals", help="Fetch sleep + resting HR from Intervals.icu"
     )
