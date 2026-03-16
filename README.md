@@ -106,7 +106,7 @@ If you add revision-loop demo assets, this list should also include:
 - `demo/plans/revised-plan.json`
 - `demo/plans/revised-plan.txt`
 
-![Example generated training plan](docs/images/training-plan-output.png)
+![Example generated training plan](docs/images/training-plan-output.jpeg)
 
 ## Pipeline at a glance
 
