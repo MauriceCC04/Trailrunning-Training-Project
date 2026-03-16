@@ -312,6 +312,11 @@ STRAVA_REDIRECT_URI="http://127.0.0.1:5000/authorization"
 # Garmin
 GARMIN_EMAIL="alice@example.com"
 GARMIN_PASSWORD="..."
+# Optional: set the first date Garmin actually has data for this profile
+# Format: MM/DD/YYYY
+GARMIN_SLEEP_START_DATE="03/18/2024"
+GARMIN_RHR_START_DATE="03/18/2024"
+GARMIN_MONITORING_START_DATE="03/18/2024"
 
 # or Intervals.icu
 # INTERVALS_API_KEY="..."
@@ -321,6 +326,8 @@ OPENROUTER_API_KEY="sk-or-v1-..."
 TRAILTRAINING_LLM_MODEL="openai/gpt-5.2"
 TRAILTRAINING_SOFT_EVAL_MODEL="anthropic/claude-sonnet-4"
 ```
+For Garmin, historical backfill is controlled through the profile env file rather than CLI date flags. Set each Garmin start date to the first day you actually have data for that metric to avoid downloading empty earlier dates.
+
 
 By default, per-profile data is stored under:
 

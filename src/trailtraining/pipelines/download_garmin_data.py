@@ -47,6 +47,9 @@ def _atomic_write_json(path: Path, data: dict) -> None:
 
 def write_config(active_home: Optional[Path] = None) -> None:
     profile = _safe_profile_name(os.getenv("TRAILTRAINING_PROFILE", "default"))
+    sleep_start = os.getenv("GARMIN_SLEEP_START_DATE", "12/25/2023")
+    rhr_start = os.getenv("GARMIN_RHR_START_DATE", sleep_start)
+    monitoring_start = os.getenv("GARMIN_MONITORING_START_DATE", sleep_start)
 
     # Per-profile stored config (always in your real home)
     stored_dir = Path.home() / ".trailtraining" / "garmin" / profile
@@ -71,9 +74,9 @@ def write_config(active_home: Optional[Path] = None) -> None:
         },
         "data": {
             "weight_start_date": "07/08/2025",
-            "sleep_start_date": "12/25/2023",
-            "rhr_start_date": "12/25/2023",
-            "monitoring_start_date": "12/25/2023",
+            "sleep_start_date": sleep_start,
+            "rhr_start_date": rhr_start,
+            "monitoring_start_date": monitoring_start,
             "download_latest_activities": 25,
             "download_all_activities": 1000,
         },
