@@ -1,17 +1,16 @@
 # src/trailtraining/config.py
-# Centralized configuration for directory paths and credentials
-
 from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any, Callable
 
 
 def _env(name: str, default: str = "") -> str:
     return (os.getenv(name, default) or "").strip()
 
 
-# ---- Runtime getters -----------------------------------------------------
+# ---- Runtime getters (always read from environment at call time) ----------
 
 
 def base_dir_path() -> Path:
@@ -24,23 +23,23 @@ def base_dir() -> str:
 
 
 def rhr_directory() -> str:
-    return os.path.join(base_dir(), "RHR")
+    return str(base_dir_path() / "RHR")
 
 
 def sleep_directory() -> str:
-    return os.path.join(base_dir(), "Sleep")
+    return str(base_dir_path() / "Sleep")
 
 
 def fit_directory() -> str:
-    return os.path.join(base_dir(), "FitFiles")
+    return str(base_dir_path() / "FitFiles")
 
 
 def processing_directory() -> str:
-    return os.path.join(base_dir(), "processing")
+    return str(base_dir_path() / "processing")
 
 
 def prompting_directory() -> str:
-    return os.path.join(base_dir(), "prompting")
+    return str(base_dir_path() / "prompting")
 
 
 def strava_id() -> int:
@@ -48,7 +47,7 @@ def strava_id() -> int:
 
 
 def strava_secret() -> str:
-    return _env("STRAVA_CLIENT_SECRET", "")
+    return _env("STRAVA_CLIENT_SECRET")
 
 
 def strava_redirect_uri() -> str:
@@ -56,41 +55,38 @@ def strava_redirect_uri() -> str:
 
 
 def garmin_email() -> str:
-    return _env("GARMIN_EMAIL", "")
+    return _env("GARMIN_EMAIL")
 
 
 def garmin_password() -> str:
-    return _env("GARMIN_PASSWORD", "")
+    return _env("GARMIN_PASSWORD")
 
 
 def intervals_api_key() -> str:
-    return _env("INTERVALS_API_KEY", "")
+    return _env("INTERVALS_API_KEY")
 
 
 def intervals_athlete_id() -> str:
-    return _env("INTERVALS_ATHLETE_ID", "0")  # "0" = current athlete
+    return _env("INTERVALS_ATHLETE_ID", "0")
 
 
 def intervals_client_id() -> str:
-    return _env("INTERVALS_CLIENT_ID", "")
+    return _env("INTERVALS_CLIENT_ID")
 
 
 def intervals_client_secret() -> str:
-    return _env("INTERVALS_CLIENT_SECRET", "")
+    return _env("INTERVALS_CLIENT_SECRET")
 
 
 def intervals_redirect_uri() -> str:
-    return _env("INTERVALS_REDIRECT_URI", "")
+    return _env("INTERVALS_REDIRECT_URI")
 
 
 def wellness_provider_setting() -> str:
-    # Prefer the namespaced env var, but keep compatibility with WELLNESS_PROVIDER.
-    # Default to "auto" so provider resolution can inspect the configured credentials.
     return _env("TRAILTRAINING_WELLNESS_PROVIDER") or _env("WELLNESS_PROVIDER", "auto")
 
 
 def ensure_directories() -> None:
-    """Create all expected directories using runtime configuration."""
     for d in [
         base_dir(),
         rhr_directory(),
@@ -102,31 +98,37 @@ def ensure_directories() -> None:
         os.makedirs(d, exist_ok=True)
 
 
-# ---- Legacy snapshot constants -------------------------------------------
-# Keep these for backward compatibility with the rest of the repo.
-# Runtime-sensitive paths/credentials should use the getter functions above.
+# ---- Backward-compatible uppercase attribute access ----------------------
+#
+# Code throughout the repo uses config.PROMPTING_DIRECTORY etc. as if they
+# were constants. These are kept working via __getattr__ so they stay
+# consistent with the current environment instead of being frozen at import
+# time (which broke after apply_profile() loaded a .env file mid-process).
 
-BASE_DIR_PATH = base_dir_path()
-BASE_DIR = base_dir()
+_ATTR_GETTERS: dict[str, Callable[[], Any]] = {
+    "BASE_DIR_PATH": base_dir_path,
+    "BASE_DIR": base_dir,
+    "RHR_DIRECTORY": rhr_directory,
+    "SLEEP_DIRECTORY": sleep_directory,
+    "FIT_DIRECTORY": fit_directory,
+    "PROCESSING_DIRECTORY": processing_directory,
+    "PROMPTING_DIRECTORY": prompting_directory,
+    "STRAVA_ID": strava_id,
+    "STRAVA_SECRET": strava_secret,
+    "STRAVA_REDIRECT_URI": strava_redirect_uri,
+    "GARMIN_EMAIL": garmin_email,
+    "GARMIN_PASSWORD": garmin_password,
+    "INTERVALS_API_KEY": intervals_api_key,
+    "INTERVALS_ATHLETE_ID": intervals_athlete_id,
+    "INTERVALS_CLIENT_ID": intervals_client_id,
+    "INTERVALS_CLIENT_SECRET": intervals_client_secret,
+    "INTERVALS_REDIRECT_URI": intervals_redirect_uri,
+    "WELLNESS_PROVIDER": wellness_provider_setting,
+}
 
-RHR_DIRECTORY = rhr_directory()
-SLEEP_DIRECTORY = sleep_directory()
-FIT_DIRECTORY = fit_directory()
 
-PROCESSING_DIRECTORY = processing_directory()
-PROMPTING_DIRECTORY = prompting_directory()
-
-STRAVA_ID = strava_id()
-STRAVA_SECRET = strava_secret()
-STRAVA_REDIRECT_URI = strava_redirect_uri()
-
-GARMIN_EMAIL = garmin_email()
-GARMIN_PASSWORD = garmin_password()
-
-INTERVALS_API_KEY = intervals_api_key()
-INTERVALS_ATHLETE_ID = intervals_athlete_id()
-INTERVALS_CLIENT_ID = intervals_client_id()
-INTERVALS_CLIENT_SECRET = intervals_client_secret()
-INTERVALS_REDIRECT_URI = intervals_redirect_uri()
-
-WELLNESS_PROVIDER = wellness_provider_setting()
+def __getattr__(name: str) -> Any:
+    getter = _ATTR_GETTERS.get(name)
+    if getter is not None:
+        return getter()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

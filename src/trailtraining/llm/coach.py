@@ -1,3 +1,4 @@
+# src/trailtraining/llm/coach.py
 from __future__ import annotations
 
 import contextlib
@@ -25,28 +26,36 @@ from trailtraining.util.state import load_json, save_json
 
 log = logging.getLogger(__name__)
 
-
-def _openrouter_api_key() -> str:
-    return (
-        os.getenv("OPENROUTER_API_KEY") or os.getenv("TRAILTRAINING_OPENROUTER_API_KEY") or ""
-    ).strip()
+# ---------------------------------------------------------------------------
+# Type coercions — trivial; consider moving to util/coerce.py if used elsewhere
+# ---------------------------------------------------------------------------
 
 
-def _openrouter_headers() -> dict[str, str]:
-    headers: dict[str, str] = {}
-    site_url = (os.getenv("TRAILTRAINING_OPENROUTER_SITE_URL") or "").strip()
-    app_name = (os.getenv("TRAILTRAINING_OPENROUTER_APP_NAME") or "trailtraining").strip()
+def _as_dict(v: Any) -> dict[str, Any]:
+    return v if isinstance(v, dict) else {}
 
-    if site_url:
-        headers["HTTP-Referer"] = site_url
-    if app_name:
-        headers["X-OpenRouter-Title"] = app_name
 
-    return headers
+def _as_list(v: Any) -> list[Any]:
+    return v if isinstance(v, list) else []
+
+
+def _as_str(v: Any) -> str:
+    return v.strip() if isinstance(v, str) else ""
+
+
+def _as_float(v: Any) -> Optional[float]:
+    return float(v) if isinstance(v, (int, float)) else None
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter client
+# ---------------------------------------------------------------------------
 
 
 def _make_openrouter_client() -> OpenAI:
-    api_key = _openrouter_api_key()
+    api_key = (
+        os.getenv("OPENROUTER_API_KEY") or os.getenv("TRAILTRAINING_OPENROUTER_API_KEY") or ""
+    ).strip()
     if not api_key:
         raise RuntimeError(
             "Missing OpenRouter API key. Set OPENROUTER_API_KEY "
@@ -55,77 +64,79 @@ def _make_openrouter_client() -> OpenAI:
             "  export OPENROUTER_API_KEY='sk-or-v1-...'\n"
             "Then rerun: trailtraining coach --prompt training-plan"
         )
+    headers: dict[str, str] = {}
+    if site_url := (os.getenv("TRAILTRAINING_OPENROUTER_SITE_URL") or "").strip():
+        headers["HTTP-Referer"] = site_url
+    if app_name := (os.getenv("TRAILTRAINING_OPENROUTER_APP_NAME") or "trailtraining").strip():
+        headers["X-OpenRouter-Title"] = app_name
+    return OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key, default_headers=headers)
 
-    return OpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=api_key,
-        default_headers=_openrouter_headers(),
-    )
 
-
-def _responses_create_compat(client: OpenAI, kwargs: dict[str, Any]) -> Any:
-    attempts: list[dict[str, Any]] = [dict(kwargs)]
-    text_cfg = dict(kwargs.get("text") or {})
-
-    if "verbosity" in text_cfg:
-        kw = dict(kwargs)
-        text2 = dict(text_cfg)
-        text2.pop("verbosity", None)
-        if text2:
-            kw["text"] = text2
-        else:
-            kw.pop("text", None)
-        attempts.append(kw)
-
-    if "reasoning" in kwargs:
-        kw = dict(kwargs)
-        kw.pop("reasoning", None)
-        attempts.append(kw)
-
-    if "reasoning" in kwargs and "verbosity" in text_cfg:
-        kw = dict(kwargs)
-        kw.pop("reasoning", None)
-        text2 = dict(text_cfg)
-        text2.pop("verbosity", None)
-        if text2:
-            kw["text"] = text2
-        else:
-            kw.pop("text", None)
-        attempts.append(kw)
-
+def _call_with_param_fallback(client: OpenAI, kwargs: dict[str, Any]) -> Any:
+    """Call responses API, progressively stripping params unsupported by some models."""
     last_exc: Optional[Exception] = None
-    for attempt in attempts:
+    for strip_reasoning, strip_verbosity in [
+        (False, False),
+        (False, True),
+        (True, False),
+        (True, True),
+    ]:
+        kw = dict(kwargs)
+        if strip_verbosity and "text" in kw:
+            text = {k: v for k, v in kw["text"].items() if k != "verbosity"}
+            if text:
+                kw["text"] = text
+            else:
+                del kw["text"]
+        if strip_reasoning:
+            kw.pop("reasoning", None)
         try:
-            return client.responses.create(**attempt)
+            return client.responses.create(**kw)
         except Exception as exc:
             last_exc = exc
-
     assert last_exc is not None
     raise last_exc
 
 
-def _forecast_capability_block(det_forecast: dict[str, Any]) -> list[str]:
-    if not isinstance(det_forecast, dict):
-        return []
+def _call_with_schema(client: OpenAI, kwargs: dict[str, Any], schema: dict[str, Any]) -> Any:
+    """Try structured JSON output, fall back to plain call if the model doesn't support it."""
+    name, body = schema.get("name"), schema.get("schema")
 
-    res = _as_dict(det_forecast.get("result"))
-    inputs = _as_dict(res.get("inputs"))
+    try:  # newer: text.format
+        kw = {
+            **kwargs,
+            "text": {
+                **kwargs.get("text", {}),
+                "format": {
+                    "type": "json_schema",
+                    "name": name,
+                    "schema": body,
+                    "strict": True,
+                },
+            },
+        }
+        return _call_with_param_fallback(client, kw)
+    except Exception:
+        pass
 
-    label = _as_str(inputs.get("recovery_capability_label"))
-    if not label:
-        return []
+    try:  # older: response_format
+        kw = {
+            **kwargs,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {"name": name, "strict": True, "schema": body},
+            },
+        }
+        return _call_with_param_fallback(client, kw)
+    except Exception:
+        pass
 
-    sleep_days = inputs.get("sleep_days_7d")
-    rhr_days = inputs.get("resting_hr_days_7d")
-    hrv_days = inputs.get("hrv_days_7d")
+    return _call_with_param_fallback(client, kwargs)
 
-    return [
-        "## Available recovery telemetry (authoritative)",
-        label,
-        f"Recent 7d usable days: sleep={sleep_days}, resting_hr={rhr_days}, hrv={hrv_days}",
-        "Do not assume unavailable recovery signals exist. Base advice only on the available telemetry above.",
-        "",
-    ]
+
+# ---------------------------------------------------------------------------
+# Small utilities
+# ---------------------------------------------------------------------------
 
 
 def _as_date(s: str) -> Optional[date]:
@@ -135,24 +146,22 @@ def _as_date(s: str) -> Optional[date]:
         return None
 
 
-def _coerce_path(p: Optional[str]) -> Optional[Path]:
-    return Path(p).expanduser().resolve() if p else None
+def _safe_json_snippet(obj: Any, *, max_chars: int) -> str:
+    try:
+        s = json.dumps(obj, ensure_ascii=False)
+    except Exception:
+        s = str(obj)
+    return (s[:max_chars] + "…") if max_chars > 0 and len(s) > max_chars else s
 
 
-def _as_dict(value: Any) -> dict[str, Any]:
-    return value if isinstance(value, dict) else {}
+def _extract_json_object(text: str) -> str:
+    start, end = text.find("{"), text.rfind("}")
+    return text[start : end + 1] if start != -1 and end > start else text
 
 
-def _as_list(value: Any) -> list[Any]:
-    return value if isinstance(value, list) else []
-
-
-def _as_str(value: Any) -> str:
-    return value.strip() if isinstance(value, str) else ""
-
-
-def _as_float(value: Any) -> Optional[float]:
-    return float(value) if isinstance(value, (int, float)) else None
+# ---------------------------------------------------------------------------
+# Input resolution
+# ---------------------------------------------------------------------------
 
 
 def _resolve_input_paths(
@@ -160,99 +169,80 @@ def _resolve_input_paths(
     personal_path: Optional[str],
     summary_path: Optional[str],
 ) -> tuple[Path, Path, Optional[Path]]:
-    base: Path
-    if input_path:
-        base = Path(input_path).expanduser().resolve()
-    else:
-        base = Path(config.PROMPTING_DIRECTORY).expanduser().resolve()
-
-    if base.is_file() and base.suffix.lower() == ".zip":
-        raise RuntimeError(
-            "Zip input not supported in this optimized version. Use a directory path."
-        )
-
-    personal = _coerce_path(personal_path) or (base / "formatted_personal_data.json")
-    summary = _coerce_path(summary_path) or (base / "combined_summary.json")
+    base = (
+        Path(input_path).expanduser().resolve()
+        if input_path
+        else Path(config.PROMPTING_DIRECTORY).expanduser().resolve()
+    )
+    personal = (
+        Path(personal_path).expanduser().resolve()
+        if personal_path
+        else base / "formatted_personal_data.json"
+    )
+    summary = (
+        Path(summary_path).expanduser().resolve()
+        if summary_path
+        else base / "combined_summary.json"
+    )
     rollups = base / "combined_rollups.json"
     return personal, summary, (rollups if rollups.exists() else None)
 
 
+# ---------------------------------------------------------------------------
+# Combined-summary helpers
+# ---------------------------------------------------------------------------
+
+
 def _dedup_activities_in_place(combined: list[dict[str, Any]]) -> None:
-    seen = set()
+    seen: set[str] = set()
     for day in combined:
         acts = day.get("activities")
         if not isinstance(acts, list):
             day["activities"] = []
             continue
-        new_acts = []
+        unique = []
         for a in acts:
             if not isinstance(a, dict):
                 continue
             aid = a.get("id")
             if aid is None:
-                new_acts.append(a)
-                continue
-            key = str(aid)
-            if key in seen:
-                continue
-            seen.add(key)
-            new_acts.append(a)
-        day["activities"] = new_acts
+                unique.append(a)
+            elif (key := str(aid)) not in seen:
+                seen.add(key)
+                unique.append(a)
+        day["activities"] = unique
 
 
 def _filter_last_days(combined: list[dict[str, Any]], days: int) -> list[dict[str, Any]]:
-    if days <= 0:
+    if days <= 0 or not combined:
         return combined
-    if not combined:
-        return combined
-
     last = _as_date(combined[-1].get("date", ""))
     if not last:
         return combined
-
     cutoff = last - timedelta(days=days - 1)
-    out = []
-    for d in combined:
-        ds = d.get("date")
-        if not isinstance(ds, str):
-            continue
-        dd = _as_date(ds)
-        if dd and dd >= cutoff:
-            out.append(d)
-    return out
+    return [d for d in combined if (dd := _as_date(d.get("date", ""))) and dd >= cutoff]
 
 
 def _summarize_activity(a: dict[str, Any]) -> str:
-    sport = a.get("sport_type") or a.get("type") or "unknown"
-    dist_m = a.get("distance")
-    elev_m = a.get("total_elevation_gain")
-    mv_s = a.get("moving_time")
-    hr = a.get("average_heartrate")
-
-    parts = [str(sport)]
-    if isinstance(dist_m, (int, float)):
-        parts.append(f"{dist_m / 1000.0:.2f} km")
-    if isinstance(elev_m, (int, float)):
-        parts.append(f"{elev_m:.0f} m+")
-    if isinstance(mv_s, (int, float)):
-        parts.append(f"{mv_s / 60.0:.0f} min")
-    if isinstance(hr, (int, float)):
+    parts = [str(a.get("sport_type") or a.get("type") or "unknown")]
+    if isinstance(dist := a.get("distance"), (int, float)):
+        parts.append(f"{dist / 1000:.2f} km")
+    if isinstance(elev := a.get("total_elevation_gain"), (int, float)):
+        parts.append(f"{elev:.0f} m+")
+    if isinstance(mv := a.get("moving_time"), (int, float)):
+        parts.append(f"{mv / 60:.0f} min")
+    if isinstance(hr := a.get("average_heartrate"), (int, float)):
         parts.append(f"avgHR {hr:.0f}")
-
-    name = a.get("name")
-    if isinstance(name, str) and name.strip():
+    if isinstance(name := a.get("name"), str) and name.strip():
         parts.append(f"({name.strip()})")
-
     return " • " + " | ".join(parts)
 
 
 def _summarize_day(day: dict[str, Any]) -> str:
-    d = day.get("date", "unknown-date")
-    lines = [f"## {d}"]
-
+    lines = [f"## {day.get('date', 'unknown-date')}"]
     sleep = day.get("sleep")
     if isinstance(sleep, dict):
-        keys = [
+        wanted = (
             "sleep_score",
             "score",
             "duration",
@@ -261,45 +251,23 @@ def _summarize_day(day: dict[str, Any]) -> str:
             "rhr",
             "readiness",
             "stress",
-        ]
-        picked = {k: sleep.get(k) for k in keys if k in sleep}
-        if picked:
-            lines.append(f"Sleep: {picked}")
-        else:
-            lines.append("Sleep: (data present)")
-    elif sleep is None:
+        )
+        picked = {k: sleep[k] for k in wanted if k in sleep}
+        lines.append(f"Sleep: {picked}" if picked else "Sleep: (data present)")
+    else:
         lines.append("Sleep: (none)")
-
     acts = day.get("activities") or []
     if isinstance(acts, list) and acts:
         lines.append(f"Activities ({len(acts)}):")
-        for a in acts[:50]:
-            if isinstance(a, dict):
-                lines.append(_summarize_activity(a))
+        lines.extend(_summarize_activity(a) for a in acts[:50] if isinstance(a, dict))
     else:
         lines.append("Activities: (none)")
-
     return "\n".join(lines) + "\n"
 
 
-def _safe_json_snippet(obj: Any, *, max_chars: int) -> str:
-    try:
-        s = json.dumps(obj, ensure_ascii=False)
-    except Exception:
-        s = str(obj)
-    if max_chars > 0 and len(s) > max_chars:
-        return s[:max_chars] + "…"
-    return s
-
-
-def _extract_json_object(text: str) -> str:
-    if not isinstance(text, str):
-        return str(text)
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        return text[start : end + 1]
-    return text
+# ---------------------------------------------------------------------------
+# Forecast helpers
+# ---------------------------------------------------------------------------
 
 
 def _load_or_compute_deterministic_forecast(
@@ -310,28 +278,21 @@ def _load_or_compute_deterministic_forecast(
     if forecast_p.exists():
         obj = load_json(forecast_p, default=None)
         return obj if isinstance(obj, dict) else None
-
     try:
         from trailtraining.forecast.forecast import compute_readiness_and_risk
-    except Exception:
-        return None
 
-    try:
         fr = compute_readiness_and_risk(combined)
         payload: dict[str, Any] = {
             "generated_at": datetime.utcnow().isoformat() + "Z",
             "result": {
-                "date": getattr(fr, "date", None),
-                "readiness": {
-                    "score": getattr(fr, "readiness_score", None),
-                    "status": getattr(fr, "readiness_status", None),
-                },
+                "date": fr.date,
+                "readiness": {"score": fr.readiness_score, "status": fr.readiness_status},
                 "overreach_risk": {
-                    "score": getattr(fr, "overreach_risk_score", None),
-                    "level": getattr(fr, "overreach_risk_level", None),
+                    "score": fr.overreach_risk_score,
+                    "level": fr.overreach_risk_level,
                 },
-                "inputs": getattr(fr, "inputs", None),
-                "drivers": getattr(fr, "drivers", None),
+                "inputs": fr.inputs,
+                "drivers": fr.drivers,
             },
         }
         with contextlib.suppress(Exception):
@@ -341,159 +302,132 @@ def _load_or_compute_deterministic_forecast(
         return None
 
 
+def _forecast_capability_block(det_forecast: dict[str, Any]) -> list[str]:
+    inputs = _as_dict(_as_dict(_as_dict(det_forecast.get("result")).get("inputs")))
+    label = _as_str(inputs.get("recovery_capability_label"))
+    if not label:
+        return []
+    return [
+        "## Available recovery telemetry (authoritative)",
+        label,
+        (
+            f"Recent 7d usable days: sleep={inputs.get('sleep_days_7d')}, "
+            f"resting_hr={inputs.get('resting_hr_days_7d')}, hrv={inputs.get('hrv_days_7d')}"
+        ),
+        "Do not assume unavailable recovery signals exist.",
+        "",
+    ]
+
+
 def _forecast_signal_rows(det_forecast: dict[str, Any]) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    if not isinstance(det_forecast, dict):
-        return out
-    res = det_forecast.get("result")
-    if not isinstance(res, dict):
-        return out
-
+    res = _as_dict(det_forecast.get("result"))
     d = res.get("date")
-    date_range = f"{d}..{d}" if isinstance(d, str) and d else ""
-
-    readiness = res.get("readiness")
+    dr = f"{d}..{d}" if isinstance(d, str) and d else ""
     inputs = _as_dict(res.get("inputs"))
-    if isinstance(inputs, dict):
-        cap_label = inputs.get("recovery_capability_label")
-        if isinstance(cap_label, str) and cap_label.strip():
-            out.append(
-                {
-                    "signal_id": "forecast.recovery_capability.label",
-                    "value": cap_label,
-                    "unit": "",
-                    "source": "readiness_and_risk_forecast.json:result.inputs.recovery_capability_label",
-                    "date_range": date_range,
-                }
-            )
-        cap_key = inputs.get("recovery_capability_key")
-        if isinstance(cap_key, str) and cap_key.strip():
-            out.append(
-                {
-                    "signal_id": "forecast.recovery_capability.key",
-                    "value": cap_key,
-                    "unit": "",
-                    "source": "readiness_and_risk_forecast.json:result.inputs.recovery_capability_key",
-                    "date_range": date_range,
-                }
-            )
-    if isinstance(readiness, dict):
-        st = readiness.get("status")
-        sc = readiness.get("score")
-        out.append(
-            {
-                "signal_id": "forecast.readiness.status",
-                "value": st,
-                "unit": "",
-                "source": "readiness_and_risk_forecast.json:result.readiness.status",
-                "date_range": date_range,
-            }
-        )
-        out.append(
-            {
-                "signal_id": "forecast.readiness.score",
-                "value": sc,
-                "unit": "0-100",
-                "source": "readiness_and_risk_forecast.json:result.readiness.score",
-                "date_range": date_range,
-            }
-        )
-        for key, signal_id in [
-            ("sleep_days_7d", "forecast.recovery_capability.sleep_days_7d"),
-            ("resting_hr_days_7d", "forecast.recovery_capability.resting_hr_days_7d"),
-            ("hrv_days_7d", "forecast.recovery_capability.hrv_days_7d"),
-        ]:
-            value = inputs.get(key)
-            out.append(
-                {
-                    "signal_id": signal_id,
-                    "value": value,
-                    "unit": "days",
-                    "source": f"readiness_and_risk_forecast.json:result.inputs.{key}",
-                    "date_range": date_range,
-                }
-            )
-    risk = res.get("overreach_risk")
-    if isinstance(risk, dict):
-        lv = risk.get("level")
-        sc2 = risk.get("score")
-        out.append(
-            {
-                "signal_id": "forecast.overreach_risk.level",
-                "value": lv,
-                "unit": "",
-                "source": "readiness_and_risk_forecast.json:result.overreach_risk.level",
-                "date_range": date_range,
-            }
-        )
-        out.append(
-            {
-                "signal_id": "forecast.overreach_risk.score",
-                "value": sc2,
-                "unit": "0-100",
-                "source": "readiness_and_risk_forecast.json:result.overreach_risk.score",
-                "date_range": date_range,
-            }
-        )
+    src = "readiness_and_risk_forecast.json:result"
 
-    return out
+    def _row(signal_id: str, value: Any, path: str, unit: str = "") -> dict[str, Any]:
+        return {
+            "signal_id": signal_id,
+            "value": value,
+            "unit": unit,
+            "source": f"{src}.{path}",
+            "date_range": dr,
+        }
+
+    rows: list[dict[str, Any]] = []
+    if label := _as_str(inputs.get("recovery_capability_label")):
+        rows.append(
+            _row("forecast.recovery_capability.label", label, "inputs.recovery_capability_label")
+        )
+    if key := _as_str(inputs.get("recovery_capability_key")):
+        rows.append(_row("forecast.recovery_capability.key", key, "inputs.recovery_capability_key"))
+
+    readiness = _as_dict(res.get("readiness"))
+    rows += [
+        _row("forecast.readiness.status", readiness.get("status"), "readiness.status"),
+        _row("forecast.readiness.score", readiness.get("score"), "readiness.score"),
+    ]
+    for key, sid in [
+        ("sleep_days_7d", "forecast.recovery_capability.sleep_days_7d"),
+        ("resting_hr_days_7d", "forecast.recovery_capability.resting_hr_days_7d"),
+        ("hrv_days_7d", "forecast.recovery_capability.hrv_days_7d"),
+    ]:
+        rows.append(_row(sid, inputs.get(key), f"inputs.{key}", "days"))
+
+    risk = _as_dict(res.get("overreach_risk"))
+    rows += [
+        _row("forecast.overreach_risk.level", risk.get("level"), "overreach_risk.level"),
+        _row("forecast.overreach_risk.score", risk.get("score"), "overreach_risk.score"),
+    ]
+    return rows
 
 
-def _apply_deterministic_readiness_to_plan(
-    plan_obj: dict[str, Any],
-    det_forecast: Optional[dict[str, Any]],
+# ---------------------------------------------------------------------------
+# Plan mutation helpers
+# ---------------------------------------------------------------------------
+
+
+def _apply_deterministic_readiness(
+    plan_obj: dict[str, Any], det_forecast: Optional[dict[str, Any]]
 ) -> None:
     if not isinstance(det_forecast, dict):
         return
-
-    res = _as_dict(det_forecast.get("result"))
-    readiness = _as_dict(res.get("readiness"))
-
-    status_raw = readiness.get("status")
-    score = readiness.get("score")
-    if status_raw not in ("primed", "steady", "fatigued"):
+    readiness = _as_dict(_as_dict(det_forecast.get("result")).get("readiness"))
+    status = readiness.get("status")
+    if status not in ("primed", "steady", "fatigued"):
         return
-    status = str(status_raw)
-
     plan_readiness = _as_dict(plan_obj.get("readiness"))
     if not plan_readiness:
         return
 
+    score = readiness.get("score")
+    prefix = (
+        f"Deterministic readiness: {status} (score {score})."
+        if isinstance(score, (int, float))
+        else f"Deterministic readiness: {status}."
+    )
+    old = _as_str(plan_readiness.get("rationale"))
     plan_readiness["status"] = status
-
-    prefix = f"Deterministic readiness: {status}"
-    if isinstance(score, (int, float)):
-        prefix += f" (score {score})."
-    else:
-        prefix += "."
-
-    old = plan_readiness.get("rationale")
-    if isinstance(old, str) and old.strip():
-        if not old.strip().lower().startswith("deterministic readiness"):
-            plan_readiness["rationale"] = prefix + " " + old.strip()
-    else:
-        plan_readiness["rationale"] = prefix
-
+    plan_readiness["rationale"] = (
+        f"{prefix} {old}" if old and not old.lower().startswith("deterministic") else prefix
+    )
     plan_obj["readiness"] = plan_readiness
 
-    data_notes = _as_list(plan_obj.get("data_notes"))
+    notes = _as_list(plan_obj.get("data_notes"))
     note = "Readiness status was set from deterministic readiness_and_risk_forecast.json."
-    if note not in data_notes:
-        data_notes.append(note)
-    plan_obj["data_notes"] = data_notes
+    if note not in notes:
+        notes.append(note)
+    plan_obj["data_notes"] = notes
 
 
-def _apply_primary_goal_to_plan(plan_obj: dict[str, Any], primary_goal: Optional[str]) -> None:
-    goal = str(primary_goal or "").strip()
-    if not goal:
-        return
-
+def _apply_primary_goal(plan_obj: dict[str, Any], primary_goal: Optional[str]) -> None:
+    goal = _as_str(primary_goal)
     meta = _as_dict(plan_obj.get("meta"))
-    if not meta:
-        return
+    if goal and meta:
+        meta["primary_goal"] = goal
+        plan_obj["meta"] = meta
 
-    meta["primary_goal"] = goal
-    plan_obj["meta"] = meta
+
+def _recompute_planned_hours(plan_obj: dict[str, Any]) -> None:
+    days = _as_list(_as_dict(plan_obj.get("plan")).get("days"))
+    total_min = sum(
+        float(d["duration_minutes"])
+        for d in days
+        if isinstance(d, dict) and isinstance(d.get("duration_minutes"), (int, float))
+    )
+    wt = _as_dict(_as_dict(plan_obj.get("plan")).get("weekly_totals"))
+    if wt:
+        wt["planned_moving_time_hours"] = round(total_min / 60.0, 1)
+
+
+# Keep old name for callers in revise.py
+_recompute_planned_hours_from_days = _recompute_planned_hours
+
+
+# ---------------------------------------------------------------------------
+# Text rendering
+# ---------------------------------------------------------------------------
 
 
 def training_plan_to_text(obj: dict[str, Any]) -> str:
@@ -501,39 +435,24 @@ def training_plan_to_text(obj: dict[str, Any]) -> str:
     readiness = _as_dict(obj.get("readiness"))
     plan = _as_dict(obj.get("plan"))
     weekly = _as_dict(plan.get("weekly_totals"))
-    days_raw = _as_list(plan.get("days"))
-    day_objs = [d for d in days_raw if isinstance(d, dict)]
-
-    def _fmt_weekday(ds: str) -> str:
-        try:
-            return date.fromisoformat(ds).strftime("%a")
-        except Exception:
-            return ""
-
-    def _day_key(day_obj: dict[str, Any]) -> str:
-        ds = day_obj.get("date")
-        return ds if isinstance(ds, str) else "9999-99-99"
-
-    day_objs.sort(key=_day_key)
+    day_objs = sorted(
+        [d for d in _as_list(plan.get("days")) if isinstance(d, dict)],
+        key=lambda d: d.get("date") or "9999-99-99",
+    )
 
     lines: list[str] = ["TrailTraining - Training Plan", ""]
 
-    plan_start = _as_str(meta.get("plan_start"))
-    plan_days = meta.get("plan_days")
-    style = _as_str(meta.get("style"))
-    today = _as_str(meta.get("today"))
-    primary_goal = _as_str(meta.get("primary_goal"))
-
-    if today:
+    if today := _as_str(meta.get("today")):
         lines.append(f"Generated: {today}")
+    plan_start, plan_days = _as_str(meta.get("plan_start")), meta.get("plan_days")
     if plan_start or plan_days is not None:
         lines.append(
             f"Plan start: {plan_start or '(unknown)'}   Days: {plan_days if plan_days is not None else '(unknown)'}"
         )
-    if style:
+    if style := _as_str(meta.get("style")):
         lines.append(f"Style: {style}")
-    if primary_goal:
-        lines.append(f"Primary goal: {primary_goal}")
+    if goal := _as_str(meta.get("primary_goal")):
+        lines.append(f"Primary goal: {goal}")
 
     status = _as_str(readiness.get("status"))
     rationale = _as_str(readiness.get("rationale"))
@@ -544,134 +463,66 @@ def training_plan_to_text(obj: dict[str, Any]) -> str:
         if rationale:
             lines.append(f"Why: {rationale}")
 
-    dist_km = _as_float(weekly.get("planned_distance_km"))
-    hours = _as_float(weekly.get("planned_moving_time_hours"))
-    elev_m = _as_float(weekly.get("planned_elevation_m"))
+    totals: list[str] = []
+    if (h := _as_float(weekly.get("planned_moving_time_hours"))) is not None:
+        totals.append(f"{h:.1f} h")
+    if (km := _as_float(weekly.get("planned_distance_km"))) and km > 0:
+        totals.append(f"{km:.0f} km")
+    if (elev := _as_float(weekly.get("planned_elevation_m"))) and elev > 0:
+        totals.append(f"{elev:.0f} m+")
+    if totals:
+        lines += ["", "Weekly totals: " + " • ".join(totals)]
 
-    if dist_km is not None or hours is not None or elev_m is not None:
-        parts: list[str] = []
-        if hours is not None:
-            parts.append(f"{hours:.1f} h")
-        if dist_km is not None and dist_km > 0:
-            parts.append(f"{dist_km:.0f} km")
-        if elev_m is not None and elev_m > 0:
-            parts.append(f"{elev_m:.0f} m+")
-        if parts:
-            lines.append("")
-            lines.append("Weekly totals: " + " • ".join(parts))
-
-    lines.append("")
-    lines.append("Day-by-day")
-    lines.append("-" * 10)
-
+    lines += ["", "Day-by-day", "-" * 10]
     for day_obj in day_objs:
         ds = _as_str(day_obj.get("date"))
-        wd = _fmt_weekday(ds) if ds else ""
+        try:
+            wd = date.fromisoformat(ds).strftime("%a") if ds else ""
+        except Exception:
+            wd = ""
         title = _as_str(day_obj.get("title")) or "(no title)"
-        session_type = _as_str(day_obj.get("session_type"))
+        st = _as_str(day_obj.get("session_type"))
         is_rest = bool(day_obj.get("is_rest_day"))
         is_hard = bool(day_obj.get("is_hard_day"))
         mins = day_obj.get("duration_minutes")
         dur = f"{mins} min" if isinstance(mins, (int, float)) else "?"
-
-        tag_parts: list[str] = []
-        if is_rest:
-            tag_parts.append("REST")
-        elif session_type:
-            tag_parts.append(session_type.upper())
-        if is_hard and not is_rest:
-            tag_parts.append("HARD")
-        tag = ", ".join(tag_parts) if tag_parts else "SESSION"
-
+        tags = (["REST"] if is_rest else ([st.upper()] if st else [])) + (
+            ["HARD"] if is_hard and not is_rest else []
+        )
         date_label = f"{wd} {ds}".strip() if wd or ds else "(unknown date)"
-        lines.append(f"{date_label}: {title} ({tag}, {dur})")
-
-        target_intensity = _as_str(day_obj.get("target_intensity"))
-        terrain = _as_str(day_obj.get("terrain"))
-        workout = _as_str(day_obj.get("workout"))
-        purpose = _as_str(day_obj.get("purpose"))
-
-        if target_intensity:
-            lines.append(f"  Intensity: {target_intensity}")
-        if terrain:
-            lines.append(f"  Terrain: {terrain}")
-        if workout:
-            lines.append(f"  Workout: {workout}")
-        if purpose:
-            lines.append(f"  Purpose: {purpose}")
-
+        lines.append(f"{date_label}: {title} ({', '.join(tags) or 'SESSION'}, {dur})")
+        for field, label in [
+            ("target_intensity", "Intensity"),
+            ("terrain", "Terrain"),
+            ("workout", "Workout"),
+            ("purpose", "Purpose"),
+        ]:
+            if val := _as_str(day_obj.get(field)):
+                lines.append(f"  {label}: {val}")
         lines.append("")
 
     recovery = _as_dict(obj.get("recovery"))
     actions = [a for a in _as_list(recovery.get("actions")) if isinstance(a, str) and a.strip()]
     if actions:
-        lines.append("Recovery focus")
-        lines.append("-" * 14)
-        for action in actions:
-            lines.append(f"- {action.strip()}")
+        lines += ["Recovery focus", "-" * 14]
+        lines.extend(f"- {a.strip()}" for a in actions)
         lines.append("")
 
     risks = [r for r in _as_list(obj.get("risks")) if isinstance(r, dict)]
     if risks:
-        lines.append("Risks / cautions")
-        lines.append("-" * 15)
+        lines += ["Risks / cautions", "-" * 15]
         for risk in risks:
-            sev = _as_str(risk.get("severity")) or "unknown"
-            msg = _as_str(risk.get("message")) or "(no message)"
-            lines.append(f"- [{sev}] {msg}")
+            lines.append(
+                f"- [{_as_str(risk.get('severity')) or 'unknown'}] {_as_str(risk.get('message')) or '(no message)'}"
+            )
         lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"
 
 
-def _call_responses_best_effort_schema(
-    client: OpenAI, kwargs: dict[str, Any], schema: dict[str, Any]
-) -> Any:
-    schema_name = schema.get("name")
-    schema_body = schema.get("schema")
-
-    try:
-        kw = dict(kwargs)
-        text_cfg = dict(kw.get("text") or {})
-        text_cfg["format"] = {
-            "type": "json_schema",
-            "name": schema_name,
-            "schema": schema_body,
-            "strict": True,
-        }
-        kw["text"] = text_cfg
-        return _responses_create_compat(client, kw)
-    except Exception:
-        pass
-
-    try:
-        kw = dict(kwargs)
-        kw["response_format"] = {
-            "type": "json_schema",
-            "json_schema": {
-                "name": schema_name,
-                "strict": True,
-                "schema": schema_body,
-            },
-        }
-        return _responses_create_compat(client, kw)
-    except Exception:
-        pass
-
-    return _responses_create_compat(client, kwargs)
-
-
-def _prompt_instruction(prompt_name: str, *, style: str) -> str:
-    try:
-        return get_task_prompt(prompt_name, style=style)
-    except Exception:
-        if prompt_name == "training-plan":
-            return "Generate a trail-running training plan for the next 7-14 days based on fatigue, recent volume, and sleep."
-        if prompt_name == "recovery-status":
-            return "Assess recovery status for the last 7 days and give actionable guidance for today and tomorrow."
-        if prompt_name == "meal-plan":
-            return "Suggest a practical meal plan for the next 3 days aligned with training load and recovery."
-        return "Provide coaching guidance based on the provided data."
+# ---------------------------------------------------------------------------
+# Prompt construction
+# ---------------------------------------------------------------------------
 
 
 def _build_prompt_text(
@@ -688,7 +539,7 @@ def _build_prompt_text(
 ) -> str:
     retrieval_weeks = int(os.getenv("TRAILTRAINING_COACH_RETRIEVAL_WEEKS", "8"))
 
-    header = [
+    sections: list[str] = [
         f"# TrailTraining Coach Brief: {prompt_name}",
         "",
         "## Evaluation context",
@@ -703,85 +554,80 @@ def _build_prompt_text(
     ]
 
     if rollups is not None:
-        header += [
+        sections += [
             "## Recent rollups (7d/28d)",
             _safe_json_snippet(rollups, max_chars=80_000),
             "",
         ]
-    header += [
+
+    sections += [
         "## Eval-coach constraints (MUST satisfy)",
         build_eval_constraints_block(rollups if isinstance(rollups, dict) else None),
         "",
     ]
+
     if deterministic_forecast is not None:
-        header += _forecast_capability_block(deterministic_forecast)
-        header += [
+        sections += _forecast_capability_block(deterministic_forecast)
+        sections += [
             "## Deterministic readiness & overreach risk (authoritative)",
             _safe_json_snippet(deterministic_forecast, max_chars=40_000),
             "",
-            "Guidance: Use the deterministic readiness.status for readiness.status in your output. "
-            "You may cite forecast.* signals from the Signal registry, and/or the underlying load/recovery signals.",
+            "Use the deterministic readiness.status for readiness.status in your output.",
             "",
         ]
 
     ctx = build_retrieval_context(
-        combined,
-        rollups if isinstance(rollups, dict) else None,
-        retrieval_weeks=retrieval_weeks,
+        combined, rollups if isinstance(rollups, dict) else None, retrieval_weeks=retrieval_weeks
     )
+    signal_registry = list(ctx.get("signal_registry") or [])
+    if isinstance(deterministic_forecast, dict):
+        signal_registry += _forecast_signal_rows(deterministic_forecast)
 
-    weekly_history = ctx.get("weekly_history")
-    signal_registry = ctx.get("signal_registry")
-
-    if isinstance(signal_registry, list) and isinstance(deterministic_forecast, dict):
-        signal_registry = list(signal_registry) + _forecast_signal_rows(deterministic_forecast)
-
-    header += [
+    sections += [
         f"## Retrieved history (weekly summaries; last {retrieval_weeks} weeks)",
-        _safe_json_snippet(weekly_history, max_chars=50_000),
+        _safe_json_snippet(ctx.get("weekly_history"), max_chars=50_000),
         "",
         "## Signal registry (you MUST cite signal_ids from here)",
         _safe_json_snippet(signal_registry, max_chars=80_000),
         "",
     ]
 
-    if detail_days > 0 and len(combined) > detail_days:
-        combined_detail = combined[-detail_days:]
-        combined_older = combined[:-detail_days]
-    else:
-        combined_detail = combined
-        combined_older = []
-
-    if combined_older:
-        header += [
-            f"## Older days included in window: {len(combined_older)} (details omitted; rely on rollups + recent detail)",
-            "",
-        ]
-
-    base = "\n".join(header)
     budget = max_chars if max_chars > 0 else 200_000
-
-    text_parts: list[str] = [base]
+    base = "\n".join(sections)
+    parts = [base]
     used = len(base)
+
+    combined_detail = (
+        combined[-detail_days:] if detail_days > 0 and len(combined) > detail_days else combined
+    )
+    if older_count := len(combined) - len(combined_detail):
+        note = f"## Older days in window: {older_count} (details omitted; rely on rollups + recent detail)\n"
+        parts.append(note)
+        used += len(note)
 
     for day in reversed(combined_detail):
         block = _summarize_day(day)
         if used + len(block) > budget:
             break
-        text_parts.append(block)
+        parts.append(block)
         used += len(block)
 
-    tail = "\n## Task\n" + _prompt_instruction(prompt_name, style=style) + "\n"
+    tail = "\n## Task\n" + get_task_prompt(prompt_name, style=style) + "\n"
     if used + len(tail) <= budget:
-        text_parts.append(tail)
+        parts.append(tail)
         used += len(tail)
 
     if prompt_name == "training-plan":
         contract = "\n## Output Contract (STRICT)\n" + training_plan_output_contract_text() + "\n"
         if used + len(contract) <= budget:
-            text_parts.append(contract)
+            parts.append(contract)
 
-    return "\n".join(text_parts)
+    return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -799,18 +645,15 @@ class CoachConfig:
     def from_env(cls) -> CoachConfig:
         def _env_int(name: str, default: int) -> int:
             v = os.getenv(name)
-            if v is None or not v.strip():
-                return default
             try:
-                return int(v)
+                return int(v) if v and v.strip() else default
             except ValueError:
                 return default
 
         style = os.getenv("TRAILTRAINING_COACH_STYLE", cls.style)
-        primary_goal = os.getenv("TRAILTRAINING_PRIMARY_GOAL")
-        if not primary_goal or not primary_goal.strip():
-            primary_goal = default_primary_goal_for_style(style)
-
+        primary_goal = os.getenv("TRAILTRAINING_PRIMARY_GOAL") or default_primary_goal_for_style(
+            style
+        )
         return cls(
             model=os.getenv("TRAILTRAINING_LLM_MODEL", cls.model),
             reasoning_effort=os.getenv("TRAILTRAINING_REASONING_EFFORT", cls.reasoning_effort),
@@ -822,27 +665,79 @@ class CoachConfig:
         )
 
 
-def _recompute_planned_hours_from_days(obj: dict[str, Any]) -> None:
-    plan = obj.get("plan")
-    if not isinstance(plan, dict):
-        return
-    days = plan.get("days")
-    if not isinstance(days, list):
-        return
+# ---------------------------------------------------------------------------
+# Training-plan pipeline (separated from run_coach_brief for clarity)
+# ---------------------------------------------------------------------------
 
-    total_min = 0.0
-    for d in days:
-        if not isinstance(d, dict):
-            continue
-        m = d.get("duration_minutes")
-        if isinstance(m, (int, float)):
-            total_min += float(m)
 
-    wt = plan.get("weekly_totals")
-    if not isinstance(wt, dict):
-        return
+def _parse_training_plan(
+    out_text: str, client: OpenAI, cfg: CoachConfig, system_instructions: str
+) -> dict[str, Any]:
+    try:
+        obj = ensure_training_plan_shape(json.loads(_extract_json_object(out_text)))
+        _recompute_planned_hours(obj)
+        return obj
+    except Exception as exc:
+        log.warning("Training-plan JSON parse/shape failed; attempting repair: %s", exc)
 
-    wt["planned_moving_time_hours"] = round(total_min / 60.0, 1)
+    repair_resp = _call_with_param_fallback(
+        client,
+        {
+            "model": cfg.model,
+            "instructions": system_instructions,
+            "input": (
+                f"Return ONLY valid JSON matching this schema:\n{TRAINING_PLAN_SCHEMA.get('schema')}\n\n"
+                f"Your previous output was invalid. Fix it:\n{out_text}\n"
+            ),
+            "reasoning": {"effort": "none"},
+            "text": {"verbosity": "low"},
+        },
+    )
+    repaired = getattr(repair_resp, "output_text", None) or str(repair_resp)
+    obj = ensure_training_plan_shape(json.loads(_extract_json_object(repaired)))
+    _recompute_planned_hours(obj)
+    return obj
+
+
+def _run_training_plan(
+    client: OpenAI,
+    api_kwargs: dict[str, Any],
+    cfg: CoachConfig,
+    resolved_goal: str,
+    deterministic_forecast: Optional[dict[str, Any]],
+    rollups: Optional[Any],
+    output_path: Optional[str],
+) -> tuple[str, str]:
+    system_instructions = api_kwargs.get("instructions", "")
+    resp = _call_with_schema(client, api_kwargs, TRAINING_PLAN_SCHEMA)
+    out_text = getattr(resp, "output_text", None) or str(resp)
+
+    obj = _parse_training_plan(out_text, client, cfg, system_instructions)
+    _apply_primary_goal(obj, resolved_goal)
+    _apply_deterministic_readiness(obj, deterministic_forecast)
+    apply_eval_coach_guardrails(obj, rollups if isinstance(rollups, dict) else None)
+
+    out_p = (
+        Path(output_path).expanduser().resolve()
+        if output_path
+        else Path(config.PROMPTING_DIRECTORY) / "coach_brief_training-plan.json"
+    )
+    out_p.parent.mkdir(parents=True, exist_ok=True)
+    save_json(out_p, obj, compact=False)
+
+    try:
+        (out_p.parent / f"{out_p.stem}.txt").write_text(
+            training_plan_to_text(obj), encoding="utf-8"
+        )
+    except Exception as exc:
+        log.warning("Failed to write training-plan text: %s", exc)
+
+    return json.dumps(obj, indent=2, ensure_ascii=False), str(out_p)
+
+
+# ---------------------------------------------------------------------------
+# Public entry point
+# ---------------------------------------------------------------------------
 
 
 def run_coach_brief(
@@ -857,7 +752,6 @@ def run_coach_brief(
     config.ensure_directories()
 
     personal_p, summary_p, rollups_p = _resolve_input_paths(input_path, personal_path, summary_path)
-
     personal = load_json(personal_p, default={})
     combined = load_json(summary_p, default=[])
     rollups = load_json(rollups_p, default=None) if rollups_p else None
@@ -868,15 +762,13 @@ def run_coach_brief(
     _dedup_activities_in_place(combined)
     combined = _filter_last_days(combined, cfg.days)
 
-    base_dir = summary_p.parent
-    deterministic_forecast = _load_or_compute_deterministic_forecast(base_dir, combined)
-
-    detail_days = int(os.getenv("TRAILTRAINING_COACH_DETAIL_DAYS", "14"))
-    detail_days = max(1, min(detail_days, len(combined))) if combined else 0
-
-    resolved_primary_goal = (cfg.primary_goal or "").strip() or default_primary_goal_for_style(
-        cfg.style
+    deterministic_forecast = _load_or_compute_deterministic_forecast(summary_p.parent, combined)
+    detail_days = (
+        max(1, min(int(os.getenv("TRAILTRAINING_COACH_DETAIL_DAYS", "14")), len(combined)))
+        if combined
+        else 0
     )
+    resolved_goal = (cfg.primary_goal or "").strip() or default_primary_goal_for_style(cfg.style)
 
     prompt_text = _build_prompt_text(
         prompt_name=prompt,
@@ -885,86 +777,41 @@ def run_coach_brief(
         combined=combined,
         deterministic_forecast=deterministic_forecast,
         style=cfg.style,
-        primary_goal=resolved_primary_goal,
+        primary_goal=resolved_goal,
         max_chars=cfg.max_chars,
         detail_days=detail_days,
     )
 
     client = _make_openrouter_client()
-
-    system_instructions = get_system_prompt(cfg.style)
-
-    kwargs: dict[str, Any] = {
+    api_kwargs: dict[str, Any] = {
         "model": cfg.model,
-        "instructions": system_instructions,
+        "instructions": get_system_prompt(cfg.style),
         "input": prompt_text,
         "reasoning": {"effort": cfg.reasoning_effort},
         "text": {"verbosity": cfg.verbosity},
     }
     if cfg.reasoning_effort == "none" and cfg.temperature is not None:
-        kwargs["temperature"] = cfg.temperature
+        api_kwargs["temperature"] = cfg.temperature
 
     if prompt == "training-plan":
-        resp = _call_responses_best_effort_schema(client, kwargs, TRAINING_PLAN_SCHEMA)
-    else:
-        resp = _responses_create_compat(client, kwargs)
+        return _run_training_plan(
+            client, api_kwargs, cfg, resolved_goal, deterministic_forecast, rollups, output_path
+        )
 
+    resp = _call_with_param_fallback(client, api_kwargs)
     out_text = getattr(resp, "output_text", None) or str(resp)
-
-    if prompt == "training-plan":
-        raw = _extract_json_object(out_text)
-        try:
-            obj = json.loads(raw)
-            obj = ensure_training_plan_shape(obj)
-            _recompute_planned_hours_from_days(obj)
-        except Exception as e:
-            log.warning("Training-plan JSON parse/shape failed; attempting one repair pass: %s", e)
-            repair_prompt = (
-                "Return ONLY valid JSON (no markdown, no backticks) matching this schema:\n"
-                f"{TRAINING_PLAN_SCHEMA.get('schema')}\n\n"
-                "Your previous output was invalid. Fix it. Here is the invalid output:\n"
-                f"{out_text}\n"
-            )
-            repair_kwargs: dict[str, Any] = {
-                "model": cfg.model,
-                "instructions": system_instructions,
-                "input": repair_prompt,
-                "reasoning": {"effort": "none"},
-                "text": {"verbosity": "low"},
-            }
-            repair_resp = _responses_create_compat(client, repair_kwargs)
-            repaired = getattr(repair_resp, "output_text", None) or str(repair_resp)
-            raw2 = _extract_json_object(repaired)
-            obj = ensure_training_plan_shape(json.loads(raw2))
-            _recompute_planned_hours_from_days(obj)
-
-        _apply_primary_goal_to_plan(obj, resolved_primary_goal)
-        _apply_deterministic_readiness_to_plan(obj, deterministic_forecast)
-        apply_eval_coach_guardrails(obj, rollups if isinstance(rollups, dict) else None)
-
-        if output_path:
-            out_p = Path(output_path).expanduser().resolve()
-        else:
-            out_p = Path(config.PROMPTING_DIRECTORY) / f"coach_brief_{prompt}.json"
-
-        out_p.parent.mkdir(parents=True, exist_ok=True)
-        save_json(out_p, obj, compact=False)
-
-        try:
-            txt_p = out_p.parent / f"{out_p.stem}.txt"
-            txt_p.write_text(training_plan_to_text(obj), encoding="utf-8")
-        except Exception as e:
-            log.warning("Failed to write training-plan text interpretation: %s", e)
-
-        pretty = json.dumps(obj, indent=2, ensure_ascii=False)
-        return pretty, str(out_p)
-
-    if output_path:
-        out_p = Path(output_path).expanduser().resolve()
-    else:
-        out_p = Path(config.PROMPTING_DIRECTORY) / f"coach_brief_{prompt}.md"
-
+    out_p = (
+        Path(output_path).expanduser().resolve()
+        if output_path
+        else Path(config.PROMPTING_DIRECTORY) / f"coach_brief_{prompt}.md"
+    )
     out_p.parent.mkdir(parents=True, exist_ok=True)
     out_p.write_text(out_text, encoding="utf-8")
-
     return out_text, str(out_p)
+
+
+# ---------------------------------------------------------------------------
+# Backward-compatible aliases (imported by revise.py and soft_eval.py)
+# ---------------------------------------------------------------------------
+_call_responses_best_effort_schema = _call_with_schema
+_apply_primary_goal_to_plan = _apply_primary_goal

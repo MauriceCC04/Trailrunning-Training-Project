@@ -1,60 +1,46 @@
-/.venv
-/.venv/
-/src/trailtraining/features/
-/strava_access_token.pkl
-/running
-/garmindb.log
-.env.local
-.DS_Store
-**/.DS_Store
-
-
-# python build artifacts
-# Python cache / build artifacts
+# Python
 __pycache__/
 *.pyc
+*.egg-info/
+
+# Build
 build/
 dist/
-*.egg-info/
-.trailtraining.egg-info/
+
+# Tools
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
 coverage.xml
 htmlcov/
+
+# Virtual environments
+.venv/
+/.venv-3.9/
+/.venv-3.10/
+/.venv-3.11/
+/.venv-3.12/
 
 # IDE
 .idea/
 .vscode/.idea/
 
-my info.txt
-profiles/me.env
+# OS
+.DS_Store
+
+# TrailTraining runtime data
+/running
+/garmindb.log
+/strava_access_token.pkl
+/trailtraining-data/
+/processing/
+.env.local
+
+# Generated source (not checked in)
+/src/trailtraining/features/
+
+# Per-user profiles (sensitive)
 profiles/me.env
 profiles/mom.env
-
-# local data output (in case pipeline writes here)
-trailtraining-data/
-processing/
-prompting/*.egg-info/
-src/trailtraining/.DS_Store
-.DS_Store
-.DS_Store
-
-.coverage
-coverage.xml
-htmlcov/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-
-.coverage
-coverage.xml
-htmlcov/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-/.venv-3.9/
-/.venv-3.10/
-/.venv-3.11/
-/.venv-3.12/
+*.diff
