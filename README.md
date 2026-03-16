@@ -8,8 +8,6 @@ Most AI coaching features are generic and unverifiable. This project is an attem
 
 → **No API keys needed to see what it produces.** Check out [`demo/`](demo) and [`docs/engineering.md`](docs/engineering.md).
 
-![Example generated training plan](docs/images/training-plan-output.jpeg)
-
 ---
 
 ## How it works
