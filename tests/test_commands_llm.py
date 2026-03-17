@@ -22,6 +22,7 @@ class FakeCoachConfig:
     temperature: float | None = None
     style: str | None = None
     primary_goal: str | None = None
+    plan_days: int = 7
 
     @classmethod
     def from_env(cls):
@@ -34,6 +35,7 @@ class FakeCoachConfig:
             temperature=None,
             style=None,
             primary_goal="base-goal",
+            plan_days=7,
         )
 
 

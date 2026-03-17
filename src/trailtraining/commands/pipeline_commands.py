@@ -80,3 +80,27 @@ def cmd_forecast(args: argparse.Namespace) -> None:
         print(result["result"])
 
     _run(_inner)
+
+
+def cmd_plan_to_ics(args: argparse.Namespace) -> None:
+    import subprocess
+    import sys
+
+    from trailtraining import config
+    from trailtraining.ics_export import export_plan_to_ics
+
+    def _inner() -> None:
+        prompting_dir = getattr(args, "input", None) or config.prompting_directory()
+        plan_path, ics_path = export_plan_to_ics(
+            prompting_dir,
+            output_path=getattr(args, "output", None),
+            start_hour=getattr(args, "start_hour", 7),
+        )
+        print(f"[Read]  {plan_path}")
+        print(f"[Saved] {ics_path}")
+
+        if not getattr(args, "no_open", False) and sys.platform == "darwin":
+            subprocess.run(["open", str(ics_path)], check=False)
+            print("[Opened] Calendar.app — accept the import prompt to add events.")
+
+    _run(_inner)

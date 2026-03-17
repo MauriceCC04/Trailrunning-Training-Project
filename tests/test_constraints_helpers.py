@@ -13,6 +13,7 @@ from trailtraining.llm.constraints import (
     evaluate_training_plan_quality,
     score_from_violations,
 )
+from trailtraining.llm.guardrails import _enforce_min_rest_per_rolling7d
 
 
 def test_env_parsers_handle_missing_blank_valid_and_invalid(monkeypatch):
@@ -128,6 +129,116 @@ def test_score_from_violations_handles_bad_penalties_and_default_category():
     assert report["score"] == 87
     assert report["grade"] == "B"
     assert report["subscores"] == {"structure": 90, "other": 97}
+
+
+def _make_days(session_types: list[str], rest_flags: list[bool]) -> list[dict[str, Any]]:
+    return [
+        {
+            "date": f"2026-03-{i + 1:02d}",
+            "session_type": st,
+            "is_rest_day": rf,
+            "is_hard_day": st in ("tempo", "intervals", "hills"),
+            "duration_minutes": 0 if rf else 60,
+        }
+        for i, (st, rf) in enumerate(zip(session_types, rest_flags))
+    ]
+
+
+def test_enforce_min_rest_rolling7d_no_violation():
+    # One rest day in the only window of 7 — no change needed.
+    days = _make_days(
+        ["easy", "aerobic", "hills", "rest", "easy", "long", "easy"],
+        [False, False, False, True, False, False, False],
+    )
+    changed = _enforce_min_rest_per_rolling7d(days, min_rest=1)
+    assert changed == []
+    assert sum(1 for d in days if d["is_rest_day"]) == 1
+
+
+def test_enforce_min_rest_rolling7d_fixes_single_violation():
+    # 7 days, no rest — expects one easy day converted.
+    days = _make_days(
+        ["easy", "aerobic", "strength", "long", "easy", "aerobic", "cross"],
+        [False] * 7,
+    )
+    changed = _enforce_min_rest_per_rolling7d(days, min_rest=1)
+    assert len(changed) == 1
+    # Converted day must now be a rest day
+    rest_days = [d for d in days if d["is_rest_day"]]
+    assert len(rest_days) == 1
+    assert rest_days[0]["duration_minutes"] == 0
+    assert rest_days[0]["session_type"] == "rest"
+    assert rest_days[0]["is_hard_day"] is False
+
+
+def test_enforce_min_rest_rolling7d_prefers_easy_over_hard():
+    # Window has easy + tempo. Easy should be converted first.
+    days = _make_days(
+        ["tempo", "easy", "aerobic", "long", "aerobic", "aerobic", "cross"],
+        [False] * 7,
+    )
+    changed = _enforce_min_rest_per_rolling7d(days, min_rest=1)
+    assert len(changed) == 1
+    converted = next(d for d in days if d["is_rest_day"])
+    # Must not be the tempo day
+    assert converted["session_type"] == "rest"
+    # Original session_type was easy or aerobic
+    tempo_day = next(d for d in days if d["date"] == "2026-03-01")
+    assert not tempo_day["is_rest_day"]
+
+
+def test_enforce_min_rest_rolling7d_28day_rolling_window():
+    # Reproduce the real failure: days 4-10 (0-indexed) have no rest.
+    # Plan: rest on day 3 and day 10 only.
+    sts = [
+        "easy",
+        "strength",
+        "hills",
+        "rest",
+        "aerobic",
+        "cross",
+        "long",
+        "easy",
+        "strength",
+        "tempo",
+        "aerobic",
+        "rest",
+        "cross",
+        "long",
+        "easy",
+        "cross",
+        "hills",
+        "strength",
+        "rest",
+        "aerobic",
+        "long",
+        "easy",
+        "strength",
+        "aerobic",
+        "rest",
+        "easy",
+        "cross",
+        "long",
+    ]
+    rests = [st == "rest" for st in sts]
+    days = _make_days(sts, rests)
+
+    # Before: find a rolling window with 0 rest days
+    windows = [days[i : i + 7] for i in range(len(days) - 6)]
+    violations_before = [wk for wk in windows if sum(1 for d in wk if d["is_rest_day"]) < 1]
+    assert violations_before, "test setup should have at least one violating window"
+
+    _enforce_min_rest_per_rolling7d(days, min_rest=1)
+
+    # After: no rolling window should have 0 rest days
+    for wk in [days[i : i + 7] for i in range(len(days) - 6)]:
+        assert sum(1 for d in wk if d["is_rest_day"]) >= 1
+
+
+def test_enforce_min_rest_rolling7d_noop_when_min_zero():
+    days = _make_days(["easy"] * 7, [False] * 7)
+    changed = _enforce_min_rest_per_rolling7d(days, min_rest=0)
+    assert changed == []
 
 
 def test_forecast_specific_limits_trigger_with_high_risk_and_sparse_context():

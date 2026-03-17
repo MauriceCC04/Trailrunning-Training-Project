@@ -29,6 +29,7 @@ def cmd_coach(args: argparse.Namespace) -> None:
             temperature=args.temperature,
             style=style,
             primary_goal=primary_goal,
+            plan_days=getattr(args, "plan_days", None) or base_cfg.plan_days,
         )
         text, out_path = run_coach_brief(
             prompt=args.prompt,

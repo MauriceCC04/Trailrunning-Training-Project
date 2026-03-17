@@ -16,6 +16,7 @@ from trailtraining.commands.pipeline_commands import (
     cmd_fetch_intervals,
     cmd_fetch_strava,
     cmd_forecast,
+    cmd_plan_to_ics,
     cmd_run_all,
     cmd_run_all_intervals,
 )
@@ -112,6 +113,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Only used if --reasoning-effort none (API restriction).",
     )
     coach_p.add_argument("--days", type=int, default=None)
+    coach_p.add_argument(
+        "--plan-days",
+        type=int,
+        default=None,
+        dest="plan_days",
+        choices=[7, 14, 21, 28],
+        help="Output plan duration in days (default: 7, or TRAILTRAINING_PLAN_DAYS env var).",
+    )
     coach_p.add_argument("--max-chars", type=int, default=None)
     coach_p.add_argument(
         "--goal",
@@ -307,5 +316,34 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output JSON path (default: <input>/readiness_and_risk_forecast.json)",
     )
     forecast_p.set_defaults(func=cmd_forecast)
+
+    ics_p = sub.add_parser(
+        "plan-to-ics",
+        help="Export most recent training plan to a .ics calendar file",
+    )
+    ics_p.add_argument(
+        "--input",
+        default=None,
+        help="Prompting directory containing the plan JSON (default: prompting dir)",
+    )
+    ics_p.add_argument(
+        "--output",
+        default=None,
+        help="Output .ics path (default: <prompting_dir>/training-plan.ics)",
+    )
+    ics_p.add_argument(
+        "--start-hour",
+        type=int,
+        default=7,
+        dest="start_hour",
+        help="Hour (0-23) for timed events to start (default: 7)",
+    )
+    ics_p.add_argument(
+        "--no-open",
+        action="store_true",
+        dest="no_open",
+        help="Do not auto-open with Calendar.app after writing (macOS only)",
+    )
+    ics_p.set_defaults(func=cmd_plan_to_ics)
 
     return parser

@@ -14,11 +14,13 @@ from trailtraining.llm.coach import (
     _call_with_schema,
     _extract_json_object,
     _make_openrouter_client,
+    _race_context_section,
     _recompute_planned_hours,
     training_plan_to_text,
 )
 from trailtraining.llm.eval import _load_rollups_near
 from trailtraining.llm.guardrails import apply_eval_coach_guardrails
+from trailtraining.llm.presets import _multiweek_addendum
 from trailtraining.llm.rubrics import _normalize_style, default_primary_goal_for_style
 from trailtraining.llm.schemas import TRAINING_PLAN_SCHEMA, ensure_training_plan_shape
 from trailtraining.util.state import load_json, save_json
@@ -122,6 +124,20 @@ def _build_revise_prompt(
     style: str,
     primary_goal: str,
 ) -> str:
+    plan_days: int = int((plan_obj.get("meta") or {}).get("plan_days") or 7)
+
+    multiweek_note: list[str] = []
+    if plan_days > 7:
+        multiweek_note = [
+            "## Multi-week plan rules (plan_days > 7)",
+            f"- The revised plan MUST contain exactly {plan_days} days in plan.days.",
+            "- Preserve the phased structure (build → build → peak → recovery) across the weeks.",
+            "- weekly_totals MUST reflect WEEK 1 values only, not the full-period total.",
+            *_multiweek_addendum(plan_days).strip().splitlines(),
+            "",
+        ]
+        multiweek_note += _race_context_section(primary_goal)
+
     return "\n".join(
         [
             "You are revising an existing endurance training plan using evaluator feedback.",
@@ -130,17 +146,20 @@ def _build_revise_prompt(
             "Do not invent new telemetry, sources, or citations.",
             f"Style: {style}",
             f"Primary goal: {primary_goal}",
+            f"Plan duration: {plan_days} days",
             "",
             "## Non-negotiable rules",
             "- Return JSON only.",
             "- The output must match the training-plan schema exactly.",
+            f"- The revised plan MUST contain exactly {plan_days} days in plan.days — do NOT reduce the day count.",
             "- Preserve meta.plan_days and the overall date range unless evaluator feedback clearly requires a change.",
             "- Keep the plan grounded in the original artifact's signals and citations.",
             "- Do not invent new signal_ids unless they already exist in the original plan/citations.",
-            "- Weekly totals must match the revised day list.",
+            "- weekly_totals must match week 1 of the revised day list.",
             "- If the evaluator identified concerns or improvements, address them concretely.",
             "- Preserve strong sessions and useful explanations when they are already good.",
             "",
+            *multiweek_note,
             *_summarize_eval_targets(report_obj),
             "## Original training plan JSON",
             _safe_json_snippet(plan_obj, max_chars=80_000),
@@ -149,7 +168,7 @@ def _build_revise_prompt(
             _safe_json_snippet(report_obj, max_chars=80_000),
             "",
             "## Output requirement",
-            "Return the complete revised training-plan JSON artifact.",
+            f"Return the complete revised training-plan JSON artifact with all {plan_days} days.",
         ]
     )
 

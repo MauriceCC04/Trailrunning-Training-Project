@@ -60,7 +60,7 @@ TRAINING_PLAN_SCHEMA: dict[str, Any] = {
                 "properties": {
                     "today": {"type": "string", "description": "YYYY-MM-DD"},
                     "plan_start": {"type": "string", "description": "YYYY-MM-DD"},
-                    "plan_days": {"type": "integer", "minimum": 1, "maximum": 21},
+                    "plan_days": {"type": "integer", "minimum": 1, "maximum": 28},
                     "style": {"type": "string"},
                     "primary_goal": {"type": "string"},
                 },
@@ -107,7 +107,7 @@ TRAINING_PLAN_SCHEMA: dict[str, Any] = {
                     "days": {
                         "type": "array",
                         "minItems": 1,
-                        "maxItems": 21,
+                        "maxItems": 28,
                         "items": {
                             "type": "object",
                             "additionalProperties": False,
@@ -205,6 +205,7 @@ def training_plan_output_contract_text() -> str:
         "Output MUST be a single JSON object (no Markdown, no backticks) matching the training-plan schema.\n"
         "Rules:\n"
         "- meta.primary_goal MUST match the authoritative primary goal provided in the prompt.\n"
+        "- meta.plan_days MUST equal the number of days in plan.days.\n"
         "- Use only signal_ids that appear in the provided Signal registry.\n"
         "- Every plan day MUST include signal_ids justifying that day.\n"
         "- readiness.signal_ids MUST justify readiness.\n"
@@ -212,4 +213,6 @@ def training_plan_output_contract_text() -> str:
         "- citations[].value MUST be a STRING.\n"
         '- snapshot.last7 and snapshot.baseline28 MUST include all keys; use empty string "" if unknown.\n'
         "- If data is missing, write it in data_notes; do NOT fabricate.\n"
+        "- weekly_totals MUST reflect WEEK 1 values only (first 7 days). "
+        "For multi-week plans this is NOT the full-period total.\n"
     )

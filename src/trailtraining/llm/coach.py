@@ -1,10 +1,12 @@
 # src/trailtraining/llm/coach.py
 from __future__ import annotations
 
+import calendar
 import contextlib
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -27,6 +29,142 @@ from trailtraining.util.state import load_json, save_json
 from trailtraining.util.text import _safe_json_snippet
 
 log = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Race-goal parsing
+# ---------------------------------------------------------------------------
+
+_MONTH_MAP: dict[str, int] = {
+    "january": 1,
+    "jan": 1,
+    "february": 2,
+    "feb": 2,
+    "march": 3,
+    "mar": 3,
+    "april": 4,
+    "apr": 4,
+    "may": 5,
+    "june": 6,
+    "jun": 6,
+    "july": 7,
+    "jul": 7,
+    "august": 8,
+    "aug": 8,
+    "september": 9,
+    "sep": 9,
+    "sept": 9,
+    "october": 10,
+    "oct": 10,
+    "november": 11,
+    "nov": 11,
+    "december": 12,
+    "dec": 12,
+}
+
+_MONTH_PATTERN = (
+    r"january|february|march|april|may|june|july|august|september|october|november|december"
+    r"|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec"
+)
+
+
+def _parse_race_context(goal_text: str, today: Optional[date] = None) -> dict[str, Any]:
+    """Extract race date from a goal string and return planning context.
+
+    Supports:
+    - ISO dates:              "2026-07-30"
+    - Full dates:             "July 30 2026", "July 30, 2026"
+    - Month + year:           "July 2026"  (approximate → last day of month)
+    - Month only:             "in April"  (next occurrence, approximate)
+
+    Returns an empty dict if no recognisable date is found or the date has passed.
+    """
+    today = today or date.today()
+    low = goal_text.strip().lower()
+    race_date: Optional[date] = None
+    is_approximate = False
+
+    # ISO date: 2026-07-30
+    m = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", goal_text)
+    if m:
+        with contextlib.suppress(ValueError):
+            race_date = date.fromisoformat(m.group(1))
+
+    # Full date: "July 30 2026" / "July 30, 2026"
+    if not race_date:
+        m = re.search(
+            rf"\b({_MONTH_PATTERN})\s+(\d{{1,2}}),?\s+(\d{{4}})\b",
+            low,
+        )
+        if m:
+            month = _MONTH_MAP.get(m.group(1))
+            if month:
+                with contextlib.suppress(ValueError):
+                    race_date = date(int(m.group(3)), month, int(m.group(2)))
+
+    # Month + year: "July 2026"
+    if not race_date:
+        m = re.search(rf"\b({_MONTH_PATTERN})\s+(\d{{4}})\b", low)
+        if m:
+            month = _MONTH_MAP.get(m.group(1))
+            if month:
+                with contextlib.suppress(ValueError):
+                    year = int(m.group(2))
+                    last_day = calendar.monthrange(year, month)[1]
+                    race_date = date(year, month, last_day)
+                    is_approximate = True
+
+    # Month only: "in April" or bare month name
+    if not race_date:
+        m = re.search(rf"\b(?:in\s+)?({_MONTH_PATTERN})\b", low)
+        if m:
+            month = _MONTH_MAP.get(m.group(1))
+            if month:
+                with contextlib.suppress(ValueError):
+                    year = today.year if month >= today.month else today.year + 1
+                    last_day = calendar.monthrange(year, month)[1]
+                    race_date = date(year, month, last_day)
+                    is_approximate = True
+
+    if not race_date:
+        return {}
+
+    days_to_race = (race_date - today).days
+    if days_to_race < 0:
+        return {}  # race already passed
+
+    return {
+        "race_date": race_date.isoformat(),
+        "weeks_to_race": days_to_race // 7,
+        "days_to_race": days_to_race,
+        "is_approximate": is_approximate,
+    }
+
+
+def _race_context_section(primary_goal: str) -> list[str]:
+    """Build prompt lines describing the race goal, or empty list if no date found."""
+    ctx = _parse_race_context(primary_goal)
+    if not ctx:
+        return []
+    approx = " (approximate — use last day of the stated month)" if ctx["is_approximate"] else ""
+    weeks = ctx["weeks_to_race"]
+    if weeks <= 2:
+        phase = "TAPER / RACE-READY — reduce volume ~20-30 %, sharpen with short quality only."
+    elif weeks <= 6:
+        phase = "PEAK — maintain quality, cap volume, practice race-specific efforts."
+    elif weeks <= 12:
+        phase = "BUILD — progressive loading, race-specific workouts increasing in frequency."
+    else:
+        phase = "BASE / DEVELOPMENT — aerobic foundation; race-specific intensity starts later."
+
+    return [
+        "## Race Goal Context (use to calibrate periodization)",
+        f"Race date: {ctx['race_date']}{approx}",
+        f"Days to race: {ctx['days_to_race']}  |  Weeks to race: {weeks}",
+        f"Recommended training phase: {phase}",
+        "Anchor the plan to this phase. If plan_days covers multiple phases, transition between them.",
+        "",
+    ]
+
 
 # ---------------------------------------------------------------------------
 # Type coercions
@@ -406,10 +544,15 @@ def _apply_primary_goal(plan_obj: dict[str, Any], primary_goal: Optional[str]) -
 
 
 def _recompute_planned_hours(plan_obj: dict[str, Any]) -> None:
-    days = _as_list(_as_dict(plan_obj.get("plan")).get("days"))
+    """Recompute weekly_totals.planned_moving_time_hours from week 1 only.
+
+    For multi-week plans, weekly_totals always reflects week 1 (days 1-7).
+    """
+    all_days = _as_list(_as_dict(plan_obj.get("plan")).get("days"))
+    week1 = all_days[: min(7, len(all_days))]
     total_min = sum(
         float(d["duration_minutes"])
-        for d in days
+        for d in week1
         if isinstance(d, dict) and isinstance(d.get("duration_minutes"), (int, float))
     )
     wt = _as_dict(_as_dict(plan_obj.get("plan")).get("weekly_totals"))
@@ -528,6 +671,7 @@ def _build_prompt_text(
     primary_goal: str,
     max_chars: int,
     detail_days: int,
+    plan_days: int = 7,
 ) -> str:
     retrieval_weeks = int(os.getenv("TRAILTRAINING_COACH_RETRIEVAL_WEEKS", "8"))
 
@@ -537,9 +681,12 @@ def _build_prompt_text(
         "## Evaluation context",
         f"Style: {style}",
         f"Primary goal (authoritative): {primary_goal}",
+        f"Plan duration: {plan_days} days",
         "",
         "The output plan MUST target the primary goal above and copy it exactly into meta.primary_goal.",
+        f"The output plan MUST contain exactly {plan_days} days in plan.days.",
         "",
+        *_race_context_section(primary_goal),
         "## Personal profile (raw JSON)",
         _safe_json_snippet(personal, max_chars=50_000),
         "",
@@ -604,7 +751,7 @@ def _build_prompt_text(
         parts.append(block)
         used += len(block)
 
-    tail = "\n## Task\n" + get_task_prompt(prompt_name, style=style) + "\n"
+    tail = "\n## Task\n" + get_task_prompt(prompt_name, style=style, plan_days=plan_days) + "\n"
     if used + len(tail) <= budget:
         parts.append(tail)
         used += len(tail)
@@ -632,6 +779,7 @@ class CoachConfig:
     temperature: Optional[float] = None
     style: str = "trailrunning"
     primary_goal: str = ""
+    plan_days: int = 7  # output plan duration (set via --plan-days or TRAILTRAINING_PLAN_DAYS)
 
     @classmethod
     def from_env(cls) -> CoachConfig:
@@ -654,6 +802,7 @@ class CoachConfig:
             max_chars=_env_int("TRAILTRAINING_COACH_MAX_CHARS", cls.max_chars),
             style=style,
             primary_goal=primary_goal,
+            plan_days=_env_int("TRAILTRAINING_PLAN_DAYS", cls.plan_days),
         )
 
 
@@ -772,6 +921,7 @@ def run_coach_brief(
         primary_goal=resolved_goal,
         max_chars=cfg.max_chars,
         detail_days=detail_days,
+        plan_days=cfg.plan_days,
     )
 
     client = _make_openrouter_client()

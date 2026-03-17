@@ -372,6 +372,13 @@ def _build_soft_eval_prompt(
     style: str,
     primary_goal: str,
 ) -> str:
+    plan_days: int = int((plan_obj.get("meta") or {}).get("plan_days") or 7)
+    plan_weeks = plan_days // 7
+    duration_note = (
+        f"{plan_days}-day ({plan_weeks}-week) multi-week plan"
+        if plan_days > 7
+        else f"{plan_days}-day plan"
+    )
     return "\n".join(
         [
             "You are the second-stage quality assessor for a generated endurance training plan.",
@@ -382,6 +389,15 @@ def _build_soft_eval_prompt(
             "## Evaluation context",
             f"Style: {style}",
             f"Primary goal: {primary_goal}",
+            f"Plan duration: {duration_note}",
+            *(
+                [
+                    f"This is a {plan_weeks}-week plan — evaluate periodization structure and weekly progression across all {plan_weeks} weeks, not just the first.",
+                    "Hard-day and rest-day constraints apply per rolling 7-day window throughout all weeks.",
+                ]
+                if plan_days > 7
+                else []
+            ),
             "",
             "## Rubrics and markers",
             render_rubrics_for_prompt(style=style, primary_goal=primary_goal),
@@ -417,6 +433,7 @@ def _build_marker_only_prompt(
     style: str,
     primary_goal: str,
 ) -> str:
+    plan_days: int = int((plan_obj.get("meta") or {}).get("plan_days") or 7)
     return "\n".join(
         [
             "Return JSON only.",
@@ -425,6 +442,7 @@ def _build_marker_only_prompt(
             "",
             f"Style: {style}",
             f"Primary goal: {primary_goal}",
+            f"Plan duration: {plan_days} days",
             "",
             "## Expected markers",
             _safe_json_snippet(_expected_markers(style), max_chars=20_000),

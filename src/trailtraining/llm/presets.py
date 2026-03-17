@@ -77,7 +77,33 @@ def get_system_prompt(style: str) -> str:
     return base_prompts.SYSTEM_PROMPT
 
 
-def get_task_prompt(prompt_name: str, style: str) -> str:
+def _multiweek_addendum(plan_days: int) -> str:
+    weeks = plan_days // 7
+    remainder = plan_days % 7
+    week_desc = f"{weeks} weeks" + (f" + {remainder} days" if remainder else "")
+    return f"""
+Multi-week plan structure ({plan_days} days / {week_desc}):
+- Plan ALL {plan_days} days in plan.days — every day needs a date, session_type, duration, etc.
+- Structure the {weeks} weeks with progressive periodization:
+  - Week 1: Establish the baseline; volume at or slightly below recent 7-day load (ramp constraint applies to week 1 only).
+  - Weeks 2-{max(2, weeks - 1)}: Progressive loading; increase volume ~5-10 % per week or alternate build / consolidate.
+  - Week {weeks}: Recovery/consolidation; reduce volume ~20-30 %, add extra easy/rest days.
+- Apply hard-day and rest-day constraints PER rolling 7-day window throughout all weeks:
+  - ≤2 consecutive hard days, ≤3 hard days per 7-day window, ≥1 rest per 7-day window.
+- weekly_totals in the output MUST reflect WEEK 1 values only (not the full-period or average total).
+- If a race date is given in the Race Goal Context, calibrate phases accordingly (taper in the final week if ≤2 weeks to race).
+
+Per-session workout quality — EVERY training day MUST include ALL of these in the `workout` field:
+- Warm-up: specific duration (e.g. "10 min easy jog") + purpose
+- Main set: specific structure (e.g. "4x8 min at tempo effort with 3 min recovery jog", "45 min aerobic run aiming for conversational pace on hilly terrain")
+- Cool-down: specific duration (e.g. "10 min easy walk/jog + stretching")
+- Target RPE or HR zone (e.g. "RPE 4-5/10", "Zone 2 HR")
+- Terrain/equipment note when relevant (e.g. "trails with 100-150 m elevation", "flat road", "stationary bike if recovering")
+Do NOT write one-liner session descriptions. Generic phrases like "Easy run to maintain aerobic fitness" are NOT acceptable.
+"""
+
+
+def get_task_prompt(prompt_name: str, style: str, plan_days: int = 7) -> str:
     """
     Returns the task prompt text used in the '## Task' section.
 
@@ -87,8 +113,18 @@ def get_task_prompt(prompt_name: str, style: str) -> str:
 
     if prompt_name == "training-plan":
         if s == "triathlon":
-            return TRIATHLON_TRAINING_PLAN_PROMPT
-        return base_prompts.PROMPTS["training-plan"]
+            base = TRIATHLON_TRAINING_PLAN_PROMPT
+        else:
+            base = base_prompts.PROMPTS["training-plan"]
+
+        # Replace hardcoded "7" references with the actual plan length
+        if plan_days != 7:
+            base = base.replace("7-day", f"{plan_days}-day")
+            base = base.replace("7-Day", f"{plan_days}-Day")
+            base = base.replace("7-day plan", f"{plan_days}-day plan")
+            base += _multiweek_addendum(plan_days)
+
+        return base
 
     # other prompts always use base
     p: dict[str, str] = base_prompts.PROMPTS

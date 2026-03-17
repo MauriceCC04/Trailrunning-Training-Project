@@ -158,14 +158,66 @@ def _enforce_max_hard_per_7d(days: list[dict[str, Any]], max_hard: int) -> list[
     if max_hard <= 0:
         return changed
 
-    wk = days[: min(7, len(days))]
-    hard = [d for d in wk if bool(d.get("is_hard_day")) and not bool(d.get("is_rest_day"))]
-
-    while len(hard) > max_hard:
-        cand = max(hard, key=_hard_downgrade_score)
-        cand["is_hard_day"] = False
-        changed.append(str(cand.get("date") or ""))
+    # Enforce per non-overlapping 7-day week across the full plan (supports multi-week plans)
+    for start in range(0, len(days), 7):
+        wk = days[start : start + 7]
         hard = [d for d in wk if bool(d.get("is_hard_day")) and not bool(d.get("is_rest_day"))]
+
+        while len(hard) > max_hard:
+            cand = max(hard, key=_hard_downgrade_score)
+            cand["is_hard_day"] = False
+            changed.append(str(cand.get("date") or ""))
+            hard = [d for d in wk if bool(d.get("is_hard_day")) and not bool(d.get("is_rest_day"))]
+
+    return changed
+
+
+def _rest_convert_score(d: dict[str, Any]) -> int:
+    """Lower score = prefer converting this day to rest first."""
+    st = str(d.get("session_type") or "")
+    if st in ("easy", "aerobic"):
+        return 1
+    if st == "strength":
+        return 2
+    if st == "cross":
+        return 3
+    if st == "long":
+        return 4
+    # tempo / intervals / hills — last resort
+    return 5
+
+
+def _enforce_min_rest_per_rolling7d(days: list[dict[str, Any]], min_rest: int) -> list[str]:
+    """Convert days to rest until every rolling 7-day window has >= min_rest rest days.
+
+    Uses the same rolling-window logic as the eval so guardrails catch exactly
+    what the evaluator would flag.
+    """
+    changed: list[str] = []
+    if min_rest <= 0:
+        return changed
+
+    windows = [days[i : i + 7] for i in range(0, len(days) - 7 + 1)] if len(days) > 7 else [days]
+
+    for _ in range(len(days)):  # safety bound
+        violating: list[dict[str, Any]] | None = None
+        for wk in windows:
+            if sum(1 for d in wk if bool(d.get("is_rest_day"))) < min_rest:
+                violating = wk
+                break
+        if violating is None:
+            break
+
+        candidates = [d for d in violating if not bool(d.get("is_rest_day"))]
+        if not candidates:
+            break
+
+        best = min(candidates, key=_rest_convert_score)
+        best["is_rest_day"] = True
+        best["session_type"] = "rest"
+        best["is_hard_day"] = False
+        best["duration_minutes"] = 0
+        changed.append(str(best.get("date") or ""))
 
     return changed
 
@@ -245,6 +297,7 @@ def apply_eval_coach_guardrails(
 
     changed_hard_week = _enforce_max_hard_per_7d(days, cfg.max_hard_per_7d)
     changed_hard_consec = _enforce_max_consecutive_hard(days, cfg.max_consecutive_hard)
+    changed_rest = _enforce_min_rest_per_rolling7d(days, cfg.min_rest_per_7d)
 
     last7 = _get_last7_hours(rollups)
     if isinstance(last7, (int, float)) and last7 > 0:
@@ -293,6 +346,10 @@ def apply_eval_coach_guardrails(
         if changed_hard_consec:
             notes.append(
                 f"Guardrails: adjusted hard-day streak on {changed_hard_consec} to satisfy max_consecutive_hard={cfg.max_consecutive_hard}."
+            )
+        if changed_rest:
+            notes.append(
+                f"Guardrails: converted {changed_rest} to rest days to satisfy min_rest_per_7d={cfg.min_rest_per_7d} (rolling window)."
             )
 
         if isinstance(last7, (int, float)) and last7 > 0:

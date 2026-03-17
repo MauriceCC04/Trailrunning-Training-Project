@@ -25,7 +25,7 @@ class SnapshotStats(StrictModel):
 class TrainingMeta(StrictModel):
     today: str
     plan_start: str
-    plan_days: int = Field(ge=1, le=21)
+    plan_days: int = Field(ge=1, le=28)
     style: str
     primary_goal: str = "to become a faster endurance athlete"
 
@@ -68,7 +68,7 @@ class PlanDay(StrictModel):
 
 class Plan(StrictModel):
     weekly_totals: WeeklyTotals
-    days: list[PlanDay] = Field(min_length=1, max_length=21)
+    days: list[PlanDay] = Field(min_length=1, max_length=28)
 
 
 class Recovery(StrictModel):
