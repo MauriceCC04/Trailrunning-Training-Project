@@ -132,7 +132,7 @@ def test_run_revise_plan_writes_json_and_txt(tmp_path: Path, monkeypatch) -> Non
 
     monkeypatch.setattr("trailtraining.llm.revise._make_openrouter_client", lambda: object())
     monkeypatch.setattr(
-        "trailtraining.llm.revise._call_responses_best_effort_schema",
+        "trailtraining.llm.revise._call_with_schema",
         lambda client, kwargs, schema: _FakeResp(json.dumps(revised)),
     )
 

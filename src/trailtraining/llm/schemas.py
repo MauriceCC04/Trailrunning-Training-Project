@@ -213,12 +213,3 @@ def training_plan_output_contract_text() -> str:
         '- snapshot.last7 and snapshot.baseline28 MUST include all keys; use empty string "" if unknown.\n'
         "- If data is missing, write it in data_notes; do NOT fabricate.\n"
     )
-
-
-def _require(obj: dict[str, Any], key: str, typ: Any) -> Any:
-    if key not in obj:
-        raise ValueError(f"Missing required key: {key}")
-    v = obj[key]
-    if not isinstance(v, typ):
-        raise ValueError(f"Key {key} must be {typ}, got {type(v)}")
-    return v

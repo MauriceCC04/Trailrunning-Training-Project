@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from trailtraining.metrics.training_load import activity_training_load_hours
+from trailtraining.util.dates import _as_date
 from trailtraining.util.state import load_json, save_json
 
 DISCIPLINE_MAP: dict[str, str] = {
@@ -52,15 +53,6 @@ FAMILY_MAP: dict[str, str] = {
     "stairs": "stairs",
     "climbing": "climbing",
 }
-
-
-def _as_date(s: Any) -> date | None:
-    if not isinstance(s, str) or len(s) < 10:
-        return None
-    try:
-        return date.fromisoformat(s[:10])
-    except Exception:
-        return None
 
 
 def _latest_valid_date(values: list[Any]) -> date:

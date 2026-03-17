@@ -6,15 +6,7 @@ from datetime import date, timedelta
 from typing import Any, Optional, cast
 
 from trailtraining.metrics.training_load import day_training_load_hours
-
-# move any other top-level imports here
-
-
-def _as_date(s: str) -> Optional[date]:
-    try:
-        return date.fromisoformat(s[:10])
-    except Exception:
-        return None
+from trailtraining.util.dates import _as_date
 
 
 def _as_dict(value: Any) -> dict[str, Any]:

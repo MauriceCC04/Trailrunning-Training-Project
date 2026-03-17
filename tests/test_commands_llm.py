@@ -1,24 +1,15 @@
 from __future__ import annotations
 
 import argparse
-import sys
 from dataclasses import dataclass
 from pathlib import Path
-from types import ModuleType
 
 import pytest
 import trailtraining.llm as llm_pkg
 import trailtraining.util as util_pkg
 from trailtraining.commands import llm_commands as lc
 
-
-def _install_module(monkeypatch, package, full_name: str, attr_name: str, **attrs):
-    module = ModuleType(full_name)
-    for key, value in attrs.items():
-        setattr(module, key, value)
-    monkeypatch.setitem(sys.modules, full_name, module)
-    monkeypatch.setattr(package, attr_name, module, raising=False)
-    return module
+from tests.helpers import install_module
 
 
 @dataclass
@@ -82,7 +73,7 @@ def test_cmd_coach_builds_config_and_prints_saved_files(monkeypatch, tmp_path, c
     monkeypatch.setattr(lc, "_run", lambda func: func())
     monkeypatch.setattr(lc, "default_primary_goal_for_style", lambda style: f"default-{style}")
     monkeypatch.setenv("TRAILTRAINING_PRIMARY_GOAL", "env-goal")
-    _install_module(
+    install_module(
         monkeypatch,
         llm_pkg,
         "trailtraining.llm.coach",
@@ -128,7 +119,7 @@ def test_cmd_eval_coach_prints_report_and_exits_zero(monkeypatch, tmp_path, caps
         "trailtraining.llm.constraints.constraint_config_from_env",
         lambda **kwargs: kwargs,
     )
-    _install_module(
+    install_module(
         monkeypatch,
         llm_pkg,
         "trailtraining.llm.eval",
@@ -148,14 +139,14 @@ def test_cmd_eval_coach_prints_report_and_exits_zero(monkeypatch, tmp_path, caps
             {},
         ),
     )
-    _install_module(
+    install_module(
         monkeypatch,
         llm_pkg,
         "trailtraining.llm.soft_eval",
         "soft_eval",
         SoftEvalConfig=FakeSoftEvalConfig,
     )
-    _install_module(
+    install_module(
         monkeypatch,
         util_pkg,
         "trailtraining.util.state",
@@ -197,7 +188,7 @@ def test_cmd_eval_coach_exits_one_for_high_severity_violation(monkeypatch, tmp_p
         "trailtraining.llm.constraints.constraint_config_from_env",
         lambda **kwargs: kwargs,
     )
-    _install_module(
+    install_module(
         monkeypatch,
         llm_pkg,
         "trailtraining.llm.eval",
@@ -218,14 +209,14 @@ def test_cmd_eval_coach_exits_one_for_high_severity_violation(monkeypatch, tmp_p
             {},
         ),
     )
-    _install_module(
+    install_module(
         monkeypatch,
         llm_pkg,
         "trailtraining.llm.soft_eval",
         "soft_eval",
         SoftEvalConfig=FakeSoftEvalConfig,
     )
-    _install_module(
+    install_module(
         monkeypatch,
         util_pkg,
         "trailtraining.util.state",
@@ -256,14 +247,14 @@ def test_cmd_eval_coach_exits_one_for_high_severity_violation(monkeypatch, tmp_p
 def test_cmd_revise_plan_prints_saved_artifacts(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(lc, "_run", lambda func: func())
     monkeypatch.setattr("trailtraining.config.PROMPTING_DIRECTORY", str(tmp_path))
-    _install_module(
+    install_module(
         monkeypatch,
         llm_pkg,
         "trailtraining.llm.coach",
         "coach",
         CoachConfig=FakeCoachConfig,
     )
-    _install_module(
+    install_module(
         monkeypatch,
         llm_pkg,
         "trailtraining.llm.revise",

@@ -1,6 +1,4 @@
 import argparse
-import sys
-from types import ModuleType
 
 import trailtraining
 import trailtraining.commands.pipeline_commands as pc
@@ -8,14 +6,7 @@ import trailtraining.data as data_pkg
 import trailtraining.forecast as forecast_pkg
 import trailtraining.pipelines as pipelines_pkg
 
-
-def _install_module(monkeypatch, package, full_name: str, attr_name: str, **attrs):
-    module = ModuleType(full_name)
-    for key, value in attrs.items():
-        setattr(module, key, value)
-    monkeypatch.setitem(sys.modules, full_name, module)
-    monkeypatch.setattr(package, attr_name, module, raising=False)
-    return module
+from tests.helpers import install_module
 
 
 def test_pipeline_commands_delegate_to_underlying_modules(monkeypatch):
@@ -23,7 +14,7 @@ def test_pipeline_commands_delegate_to_underlying_modules(monkeypatch):
 
     monkeypatch.setattr(pc, "_run", lambda func: func())
 
-    _install_module(
+    install_module(
         monkeypatch,
         pipelines_pkg,
         "trailtraining.pipelines.strava",
@@ -31,42 +22,42 @@ def test_pipeline_commands_delegate_to_underlying_modules(monkeypatch):
         auth_main=lambda force=False: calls.append(("auth_strava", force)),
         main=lambda: calls.append(("fetch_strava", None)),
     )
-    _install_module(
+    install_module(
         monkeypatch,
         pipelines_pkg,
         "trailtraining.pipelines.garmin",
         "garmin",
         main=lambda: calls.append(("fetch_garmin", None)),
     )
-    _install_module(
+    install_module(
         monkeypatch,
         data_pkg,
         "trailtraining.data.combine",
         "combine",
         main=lambda: calls.append(("combine", None)),
     )
-    _install_module(
+    install_module(
         monkeypatch,
         pipelines_pkg,
         "trailtraining.pipelines.run_all",
         "run_all",
         main=lambda **kwargs: calls.append(("run_all", kwargs)),
     )
-    _install_module(
+    install_module(
         monkeypatch,
         pipelines_pkg,
         "trailtraining.pipelines.intervals",
         "intervals",
         main=lambda **kwargs: calls.append(("fetch_intervals", kwargs)),
     )
-    _install_module(
+    install_module(
         monkeypatch,
         pipelines_pkg,
         "trailtraining.pipelines.run_all_intervals",
         "run_all_intervals",
         main=lambda **kwargs: calls.append(("run_all_intervals", kwargs)),
     )
-    _install_module(
+    install_module(
         monkeypatch,
         trailtraining,
         "trailtraining.doctor",
@@ -121,7 +112,7 @@ def test_pipeline_commands_delegate_to_underlying_modules(monkeypatch):
 
 def test_forecast_command_prints_saved_path_and_result(monkeypatch, capsys):
     monkeypatch.setattr(pc, "_run", lambda func: func())
-    _install_module(
+    install_module(
         monkeypatch,
         forecast_pkg,
         "trailtraining.forecast.forecast",

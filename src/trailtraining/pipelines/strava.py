@@ -1,9 +1,8 @@
 """
 Pipeline: fetch Strava activities and write processing/strava_activities.json
 
-Implements:
-- D: removes pandas/stravalib/pickle usage
-- E: requests.Session reuse, retries/backoff, incremental fetch via `after` + meta file
+Implements incremental fetch via `after` + meta file, connection pooling,
+retries/backoff, and removes legacy pandas/stravalib/pickle dependencies.
 """
 
 from __future__ import annotations
@@ -53,6 +52,9 @@ PER_PAGE = int(os.getenv("TRAILTRAINING_STRAVA_PER_PAGE", "200"))  # Strava max 
 AFTER_BUFFER_SECONDS = int(
     os.getenv("TRAILTRAINING_STRAVA_AFTER_BUFFER_SECONDS", str(7 * 24 * 3600))
 )  # 7 days
+
+# Reuse a single session across requests
+_SESSION = requests.Session()
 
 
 def _parse_strava_datetime(s: Optional[str]) -> Optional[datetime]:

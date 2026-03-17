@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any, Optional
 
+from trailtraining.util.dates import _as_date
+
 
 @dataclass(frozen=True)
 class ConstraintConfig:
@@ -113,15 +115,6 @@ def _pct_increase(new: float, old: Optional[float]) -> Optional[float]:
     if old is None or old <= 0:
         return None
     return (new - old) / old * 100.0
-
-
-def _as_date(s: Any) -> Optional[date]:
-    if not isinstance(s, str):
-        return None
-    try:
-        return date.fromisoformat(s)
-    except Exception:
-        return None
 
 
 def _default_penalty(severity: str) -> int:

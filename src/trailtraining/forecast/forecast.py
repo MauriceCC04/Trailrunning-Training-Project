@@ -19,6 +19,7 @@ from trailtraining.contracts import (
 )
 from trailtraining.metrics.training_load import day_training_load_hours
 from trailtraining.providers import resolve_wellness_provider
+from trailtraining.util.dates import _as_date
 from trailtraining.util.errors import ArtifactError, DataValidationError
 from trailtraining.util.state import load_json, save_json
 
@@ -95,13 +96,6 @@ def normalize_risk_level(value: str) -> RiskLevel:
     if value not in {"low", "moderate", "high"}:
         raise ValueError(f"Invalid risk level: {value}")
     return cast(RiskLevel, value)
-
-
-def _as_date(s: str) -> Optional[date]:
-    try:
-        return date.fromisoformat(s[:10])
-    except Exception:
-        return None
 
 
 def _sleep_int(day_obj: dict[str, Any], key: str) -> Optional[float]:
@@ -401,7 +395,6 @@ def compute_readiness_and_risk(
             round(float(delta_load), 3) if delta_load is not None else None
         ),
         "training_load_z": (round(z_load, 3) if z_load is not None else None),
-        # NEW
         "sleep_7d_mean_hours": (round(sleep7, 2) if sleep7 is not None else None),
         "hrv_7d_mean_ms": (round(hrv7, 2) if hrv7 is not None else None),
         "recovery_capability_key": capability["key"],
@@ -447,7 +440,6 @@ def run_forecasts(
             hint=f"Got {type(combined).__name__} instead.",
         )
 
-    # NEW: load rollups if present and pass into compute_readiness_and_risk
     rollups_p = base / "combined_rollups.json"
     rollups: Optional[dict[str, Any]] = None
     if rollups_p.exists():

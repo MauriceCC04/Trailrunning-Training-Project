@@ -32,7 +32,6 @@ htmlcov/
 # TrailTraining runtime data
 /running
 /garmindb.log
-/strava_access_token.pkl
 /trailtraining-data/
 /processing/
 .env.local

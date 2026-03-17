@@ -10,25 +10,26 @@ from typing import Any, Optional
 from trailtraining import config
 from trailtraining.contracts import EvaluationReportArtifact, TrainingPlanArtifact
 from trailtraining.llm.coach import (
-    _apply_primary_goal_to_plan,
-    _call_responses_best_effort_schema,
+    _apply_primary_goal,
+    _call_with_schema,
     _extract_json_object,
     _make_openrouter_client,
-    _recompute_planned_hours_from_days,
+    _recompute_planned_hours,
     training_plan_to_text,
 )
 from trailtraining.llm.eval import _load_rollups_near
 from trailtraining.llm.guardrails import apply_eval_coach_guardrails
-from trailtraining.llm.rubrics import default_primary_goal_for_style
+from trailtraining.llm.rubrics import _normalize_style, default_primary_goal_for_style
 from trailtraining.llm.schemas import TRAINING_PLAN_SCHEMA, ensure_training_plan_shape
 from trailtraining.util.state import load_json, save_json
+from trailtraining.util.text import _safe_json_snippet
 
 log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
 class RevisePlanConfig:
-    model: str = "openai/gpt-5.2"
+    model: str = "openai/gpt-4o"
     reasoning_effort: str = "medium"
     verbosity: str = "medium"
     temperature: Optional[float] = None
@@ -48,23 +49,6 @@ class RevisePlanConfig:
             ),
             primary_goal=os.getenv("TRAILTRAINING_PRIMARY_GOAL") or None,
         )
-
-
-def _normalize_style(value: Any) -> str:
-    s = str(value or "").strip().lower()
-    if s in {"trailrunning", "triathlon"}:
-        return s
-    return "trailrunning"
-
-
-def _safe_json_snippet(obj: Any, max_chars: int = 120_000) -> str:
-    try:
-        s = json.dumps(obj, ensure_ascii=False)
-    except Exception:
-        s = str(obj)
-    if len(s) <= max_chars:
-        return s
-    return s[:max_chars] + "…"
 
 
 def _summarize_eval_targets(report_obj: dict[str, Any]) -> list[str]:
@@ -217,12 +201,12 @@ def run_revise_plan(
     if cfg.reasoning_effort == "none" and cfg.temperature is not None:
         kwargs["temperature"] = cfg.temperature
 
-    resp = _call_responses_best_effort_schema(client, kwargs, TRAINING_PLAN_SCHEMA)
+    resp = _call_with_schema(client, kwargs, TRAINING_PLAN_SCHEMA)
     out_text = getattr(resp, "output_text", None) or str(resp)
 
     try:
         obj = ensure_training_plan_shape(json.loads(_extract_json_object(out_text)))
-        _recompute_planned_hours_from_days(obj)
+        _recompute_planned_hours(obj)
     except Exception as exc:
         log.warning("Revised-plan JSON parse/shape failed; attempting one repair pass: %s", exc)
         repair_prompt = (
@@ -238,14 +222,12 @@ def run_revise_plan(
             "reasoning": {"effort": "none"},
             "text": {"verbosity": "low"},
         }
-        repair_resp = _call_responses_best_effort_schema(
-            client, repair_kwargs, TRAINING_PLAN_SCHEMA
-        )
+        repair_resp = _call_with_schema(client, repair_kwargs, TRAINING_PLAN_SCHEMA)
         repaired = getattr(repair_resp, "output_text", None) or str(repair_resp)
         obj = ensure_training_plan_shape(json.loads(_extract_json_object(repaired)))
-        _recompute_planned_hours_from_days(obj)
+        _recompute_planned_hours(obj)
 
-    _apply_primary_goal_to_plan(obj, primary_goal)
+    _apply_primary_goal(obj, primary_goal)
 
     rollups = _load_rollups_near(plan_p, rollups_path)
     if isinstance(rollups, dict):

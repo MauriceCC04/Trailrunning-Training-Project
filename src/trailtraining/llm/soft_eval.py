@@ -8,18 +8,20 @@ from typing import Any, Optional
 
 from trailtraining.contracts import SoftAssessmentArtifact
 from trailtraining.llm.coach import (
-    _call_responses_best_effort_schema,
+    _call_with_schema,
     _extract_json_object,
     _make_openrouter_client,
 )
 from trailtraining.llm.rubrics import (
     DEFAULT_PRIMARY_GOAL,
+    _normalize_style,
     default_primary_goal_for_style,
     get_default_rubrics,
     grade_from_score,
     render_rubrics_for_prompt,
     weighted_score_from_rubric_scores,
 )
+from trailtraining.util.text import _safe_json_snippet
 
 log = logging.getLogger(__name__)
 
@@ -172,23 +174,6 @@ def _marker_only_schema() -> dict[str, Any]:
             },
         },
     }
-
-
-def _safe_json_snippet(obj: Any, max_chars: int = 120_000) -> str:
-    try:
-        s = json.dumps(obj, ensure_ascii=False)
-    except Exception:
-        s = str(obj)
-    if len(s) <= max_chars:
-        return s
-    return s[:max_chars] + "…"
-
-
-def _normalize_style(value: Any) -> str:
-    s = str(value or "").strip().lower()
-    if s in {"trailrunning", "triathlon"}:
-        return s
-    return "trailrunning"
 
 
 def _normalize_confidence(value: Any) -> str:
@@ -596,7 +581,7 @@ def _repair_soft_eval_output(
         "text": {"verbosity": "low"},
         "max_output_tokens": int(os.getenv("TRAILTRAINING_SOFT_EVAL_MAX_OUTPUT_TOKENS", "6000")),
     }
-    repair_resp = _call_responses_best_effort_schema(client, repair_kwargs, SOFT_EVAL_SCHEMA)
+    repair_resp = _call_with_schema(client, repair_kwargs, SOFT_EVAL_SCHEMA)
     repair_text = getattr(repair_resp, "output_text", None) or str(repair_resp)
     return _parse_and_validate_soft_eval_output(repair_text)
 
@@ -625,7 +610,7 @@ def _generate_marker_results_only(
         "text": {"verbosity": "low"},
         "max_output_tokens": int(os.getenv("TRAILTRAINING_SOFT_EVAL_MAX_OUTPUT_TOKENS", "6000")),
     }
-    resp = _call_responses_best_effort_schema(client, kwargs, _marker_only_schema())
+    resp = _call_with_schema(client, kwargs, _marker_only_schema())
     out_text = getattr(resp, "output_text", None) or str(resp)
     raw = _parse_soft_eval_json(out_text)
     marker_results = raw.get("marker_results")
@@ -666,7 +651,7 @@ def evaluate_training_plan_soft(
     if cfg.reasoning_effort == "none" and cfg.temperature is not None:
         kwargs["temperature"] = cfg.temperature
 
-    resp = _call_responses_best_effort_schema(client, kwargs, SOFT_EVAL_SCHEMA)
+    resp = _call_with_schema(client, kwargs, SOFT_EVAL_SCHEMA)
     out_text = getattr(resp, "output_text", None) or str(resp)
 
     try:

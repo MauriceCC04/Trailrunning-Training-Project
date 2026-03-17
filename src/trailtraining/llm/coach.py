@@ -22,12 +22,14 @@ from trailtraining.llm.schemas import (
     training_plan_output_contract_text,
 )
 from trailtraining.llm.signals import build_retrieval_context
+from trailtraining.util.dates import _as_date
 from trailtraining.util.state import load_json, save_json
+from trailtraining.util.text import _safe_json_snippet
 
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Type coercions — trivial; consider moving to util/coerce.py if used elsewhere
+# Type coercions
 # ---------------------------------------------------------------------------
 
 
@@ -73,23 +75,32 @@ def _make_openrouter_client() -> OpenAI:
 
 
 def _call_with_param_fallback(client: OpenAI, kwargs: dict[str, Any]) -> Any:
-    """Call responses API, progressively stripping params unsupported by some models."""
+    """Call the responses API, stripping unsupported params on failure.
+
+    Tries four progressively-stripped variants so the same call site works
+    across models that reject reasoning or verbosity parameters:
+
+    1. Full kwargs
+    2. Without ``text.verbosity`` only
+    3. Without ``reasoning`` only
+    4. Without either (bare minimum)
+    """
+
+    def _strip_verbosity(kw: dict[str, Any]) -> dict[str, Any]:
+        text = {k: v for k, v in kw.get("text", {}).items() if k != "verbosity"}
+        return {**kw, "text": text} if text else {k: v for k, v in kw.items() if k != "text"}
+
+    def _strip_reasoning(kw: dict[str, Any]) -> dict[str, Any]:
+        return {k: v for k, v in kw.items() if k != "reasoning"}
+
+    attempts = [
+        kwargs,
+        _strip_verbosity(kwargs),
+        _strip_reasoning(kwargs),
+        _strip_reasoning(_strip_verbosity(kwargs)),
+    ]
     last_exc: Optional[Exception] = None
-    for strip_reasoning, strip_verbosity in [
-        (False, False),
-        (False, True),
-        (True, False),
-        (True, True),
-    ]:
-        kw = dict(kwargs)
-        if strip_verbosity and "text" in kw:
-            text = {k: v for k, v in kw["text"].items() if k != "verbosity"}
-            if text:
-                kw["text"] = text
-            else:
-                del kw["text"]
-        if strip_reasoning:
-            kw.pop("reasoning", None)
+    for kw in attempts:
         try:
             return client.responses.create(**kw)
         except Exception as exc:
@@ -137,21 +148,6 @@ def _call_with_schema(client: OpenAI, kwargs: dict[str, Any], schema: dict[str, 
 # ---------------------------------------------------------------------------
 # Small utilities
 # ---------------------------------------------------------------------------
-
-
-def _as_date(s: str) -> Optional[date]:
-    try:
-        return date.fromisoformat(s)
-    except Exception:
-        return None
-
-
-def _safe_json_snippet(obj: Any, *, max_chars: int) -> str:
-    try:
-        s = json.dumps(obj, ensure_ascii=False)
-    except Exception:
-        s = str(obj)
-    return (s[:max_chars] + "…") if max_chars > 0 and len(s) > max_chars else s
 
 
 def _extract_json_object(text: str) -> str:
@@ -214,7 +210,7 @@ def _dedup_activities_in_place(combined: list[dict[str, Any]]) -> None:
 
 
 def _filter_last_days(combined: list[dict[str, Any]], days: int) -> list[dict[str, Any]]:
-    if days <= 0 or not combined:
+    if not combined:
         return combined
     last = _as_date(combined[-1].get("date", ""))
     if not last:
@@ -419,10 +415,6 @@ def _recompute_planned_hours(plan_obj: dict[str, Any]) -> None:
     wt = _as_dict(_as_dict(plan_obj.get("plan")).get("weekly_totals"))
     if wt:
         wt["planned_moving_time_hours"] = round(total_min / 60.0, 1)
-
-
-# Keep old name for callers in revise.py
-_recompute_planned_hours_from_days = _recompute_planned_hours
 
 
 # ---------------------------------------------------------------------------
@@ -632,7 +624,7 @@ def _build_prompt_text(
 
 @dataclass(frozen=True)
 class CoachConfig:
-    model: str = "openai/gpt-5.2"
+    model: str = "openai/gpt-4o"
     reasoning_effort: str = "medium"
     verbosity: str = "medium"
     days: int = 60
@@ -666,7 +658,7 @@ class CoachConfig:
 
 
 # ---------------------------------------------------------------------------
-# Training-plan pipeline (separated from run_coach_brief for clarity)
+# Training-plan pipeline
 # ---------------------------------------------------------------------------
 
 
@@ -808,10 +800,3 @@ def run_coach_brief(
     out_p.parent.mkdir(parents=True, exist_ok=True)
     out_p.write_text(out_text, encoding="utf-8")
     return out_text, str(out_p)
-
-
-# ---------------------------------------------------------------------------
-# Backward-compatible aliases (imported by revise.py and soft_eval.py)
-# ---------------------------------------------------------------------------
-_call_responses_best_effort_schema = _call_with_schema
-_apply_primary_goal_to_plan = _apply_primary_goal

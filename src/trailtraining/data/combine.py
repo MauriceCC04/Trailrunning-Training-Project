@@ -10,14 +10,8 @@ from typing import Any, Optional
 from trailtraining import config
 from trailtraining.data.personal_profile import build_formatted_personal_profile
 from trailtraining.metrics.training_load import activity_training_load_hours
+from trailtraining.util.dates import _as_date
 from trailtraining.util.state import load_json, save_json
-
-
-def _as_date(s: str) -> Optional[date]:
-    try:
-        return date.fromisoformat(s[:10])
-    except Exception:
-        return None
 
 
 def _extract_sleep_date(entry: dict[str, Any]) -> Optional[str]:
