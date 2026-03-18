@@ -208,25 +208,54 @@ class EvaluationReportArtifact(StrictModel):
 # ---------- forecast artifact ----------
 
 
+# Patch: replace the ForecastInputs class in src/trailtraining/contracts.py
+#
+# The only change from the original is the addition of eight new Optional fields
+# (sleep_28d_*, sleep_delta_*, sleep_z, hrv_28d_*, hrv_delta_*, hrv_z) that
+# forecast.py now populates.  StrictModel forbids extra keys, so without these
+# additions ForecastInputs.model_validate(fr.inputs) would raise.
+#
+# Replace the existing ForecastInputs class (everything between
+# "class ForecastInputs(StrictModel):" and the blank line before
+# "class ForecastDrivers(StrictModel):") with the block below.
+
+
 class ForecastInputs(StrictModel):
     as_of_date: dt.date
+
+    # Resting heart rate
     rhr_7d_mean_bpm: Optional[float] = None
     rhr_28d_mean_bpm: Optional[float] = None
     rhr_28d_std_bpm: Optional[float] = None
     rhr_delta_bpm: Optional[float] = None
     rhr_z: Optional[float] = None
+
+    # Training load
     training_load_7d_hours: Optional[float] = None
     training_load_rolling7_mean_hours: Optional[float] = None
     training_load_rolling7_std_hours: Optional[float] = None
     training_load_delta_hours: Optional[float] = None
     training_load_z: Optional[float] = None
 
+    # Sleep — 7d values were already present; 28d baseline is new
     sleep_7d_mean_hours: Optional[float] = None
-    hrv_7d_mean_ms: Optional[float] = None
+    sleep_28d_mean_hours: Optional[float] = None  # NEW
+    sleep_28d_std_hours: Optional[float] = None  # NEW
+    sleep_delta_hours: Optional[float] = None  # NEW
+    sleep_z: Optional[float] = None  # NEW
 
+    # HRV — 7d value was already present; 28d baseline is new
+    hrv_7d_mean_ms: Optional[float] = None
+    hrv_28d_mean_ms: Optional[float] = None  # NEW
+    hrv_28d_std_ms: Optional[float] = None  # NEW
+    hrv_delta_ms: Optional[float] = None  # NEW
+    hrv_z: Optional[float] = None  # NEW
+
+    # Capability summary
     recovery_capability_key: str = "load_only"
     recovery_capability_label: str = "I only have training data"
 
+    # Signal day counts
     sleep_days_7d: int = 0
     resting_hr_days_7d: int = 0
     hrv_days_7d: int = 0
