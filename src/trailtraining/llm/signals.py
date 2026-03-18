@@ -2,11 +2,27 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass, field
 from datetime import date, timedelta
-from typing import Any, Optional, cast
+from typing import Any, Optional
 
 from trailtraining.metrics.training_load import day_training_load_hours
 from trailtraining.util.dates import _as_date
+
+
+@dataclass
+class _WeekBucket:
+    iso_week: str
+    min_date: date
+    max_date: date
+    distance_km: float = 0.0
+    moving_time_hours: float = 0.0
+    elevation_m: float = 0.0
+    training_load_hours: float = 0.0
+    sleep_hours: list[float] = field(default_factory=list)
+    hrv: list[float] = field(default_factory=list)
+    rhr: list[float] = field(default_factory=list)
+    days_with_sleep: int = 0
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -95,7 +111,7 @@ def build_weekly_history(combined: list[dict[str, Any]], *, weeks: int) -> list[
     if not last_d:
         return []
 
-    buckets: dict[str, dict[str, Any]] = {}
+    buckets: dict[str, _WeekBucket] = {}
 
     for day_obj in combined:
         ds = day_obj.get("date")
@@ -110,48 +126,30 @@ def build_weekly_history(combined: list[dict[str, Any]], *, weeks: int) -> list[
 
         bucket = buckets.get(week_id)
         if bucket is None:
-            bucket = {
-                "iso_week": week_id,
-                "min_date": d,
-                "max_date": d,
-                "distance_km": 0.0,
-                "moving_time_hours": 0.0,
-                "elevation_m": 0.0,
-                "training_load_hours": 0.0,
-                "sleep_hours": [],
-                "hrv": [],
-                "rhr": [],
-                "days_with_sleep": 0,
-            }
+            bucket = _WeekBucket(iso_week=week_id, min_date=d, max_date=d)
             buckets[week_id] = bucket
 
-        bucket["min_date"] = min(cast(date, bucket["min_date"]), d)
-        bucket["max_date"] = max(cast(date, bucket["max_date"]), d)
+        bucket.min_date = min(bucket.min_date, d)
+        bucket.max_date = max(bucket.max_date, d)
 
         dk, mh, em, tlh = _sum_activity_fields(day_obj)
-        bucket["distance_km"] = float(bucket["distance_km"]) + dk
-        bucket["moving_time_hours"] = float(bucket["moving_time_hours"]) + mh
-        bucket["elevation_m"] = float(bucket["elevation_m"]) + em
-        bucket["training_load_hours"] = float(bucket["training_load_hours"]) + tlh
+        bucket.distance_km += dk
+        bucket.moving_time_hours += mh
+        bucket.elevation_m += em
+        bucket.training_load_hours += tlh
 
         sh = _sleep_hours(day_obj)
         if sh is not None:
-            sleep_hours = _as_float_list(bucket["sleep_hours"])
-            sleep_hours.append(sh)
-            bucket["sleep_hours"] = sleep_hours
-            bucket["days_with_sleep"] = int(bucket["days_with_sleep"]) + 1
+            bucket.sleep_hours.append(sh)
+            bucket.days_with_sleep += 1
 
         hrv = _sleep_int(day_obj, "avgOvernightHrv")
         if hrv is not None:
-            hrv_vals = _as_float_list(bucket["hrv"])
-            hrv_vals.append(float(hrv))
-            bucket["hrv"] = hrv_vals
+            bucket.hrv.append(float(hrv))
 
         rhr = _sleep_int(day_obj, "restingHeartRate")
         if rhr is not None:
-            rhr_vals = _as_float_list(bucket["rhr"])
-            rhr_vals.append(float(rhr))
-            bucket["rhr"] = rhr_vals
+            bucket.rhr.append(float(rhr))
 
     all_weeks = sorted(buckets.keys())
     keep = set(all_weeks[-weeks:]) if weeks > 0 and len(all_weeks) > weeks else set(all_weeks)
@@ -162,22 +160,18 @@ def build_weekly_history(combined: list[dict[str, Any]], *, weeks: int) -> list[
             continue
 
         bucket = buckets[week_id]
-        sleep_hours = _as_float_list(bucket["sleep_hours"])
-        hrv_vals = _as_float_list(bucket["hrv"])
-        rhr_vals = _as_float_list(bucket["rhr"])
-
         out.append(
             {
-                "iso_week": str(bucket["iso_week"]),
-                "date_range": f"{cast(date, bucket['min_date']).isoformat()}..{cast(date, bucket['max_date']).isoformat()}",
-                "distance_km": round(float(bucket["distance_km"]), 3),
-                "moving_time_hours": round(float(bucket["moving_time_hours"]), 3),
-                "elevation_m": round(float(bucket["elevation_m"]), 1),
-                "training_load_hours": round(float(bucket["training_load_hours"]), 3),
-                "sleep_hours_mean": _round_or_none(_mean(sleep_hours), 2),
-                "hrv_mean": _round_or_none(_mean(hrv_vals), 2),
-                "rhr_mean": _round_or_none(_mean(rhr_vals), 2),
-                "days_with_sleep": int(bucket["days_with_sleep"]),
+                "iso_week": bucket.iso_week,
+                "date_range": f"{bucket.min_date.isoformat()}..{bucket.max_date.isoformat()}",
+                "distance_km": round(bucket.distance_km, 3),
+                "moving_time_hours": round(bucket.moving_time_hours, 3),
+                "elevation_m": round(bucket.elevation_m, 1),
+                "training_load_hours": round(bucket.training_load_hours, 3),
+                "sleep_hours_mean": _round_or_none(_mean(bucket.sleep_hours), 2),
+                "hrv_mean": _round_or_none(_mean(bucket.hrv), 2),
+                "rhr_mean": _round_or_none(_mean(bucket.rhr), 2),
+                "days_with_sleep": bucket.days_with_sleep,
             }
         )
 

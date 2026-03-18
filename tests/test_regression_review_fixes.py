@@ -145,12 +145,21 @@ def test_combine_main_reports_skipped_rollups_when_no_combined_data(
     assert "Skipped rollups:" in out
 
 
-def test_deterministic_forecast_logs_save_failures_but_returns_payload(
+def test_load_deterministic_forecast_has_no_hidden_side_effects(tmp_path: Path) -> None:
+    from trailtraining.llm import coach_io
+
+    payload = coach_io.load_deterministic_forecast(tmp_path)
+
+    assert payload is None
+    assert not (tmp_path / "readiness_and_risk_forecast.json").exists()
+
+
+def test_get_or_create_deterministic_forecast_logs_save_failures_but_returns_payload(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, tmp_path: Path
 ) -> None:
     from typing import Any, Callable
 
-    from trailtraining.llm import coach as coach_mod
+    from trailtraining.llm import coach_io
 
     fake_module = types.ModuleType("trailtraining.forecast.forecast")
 
@@ -162,7 +171,7 @@ def test_deterministic_forecast_logs_save_failures_but_returns_payload(
             self.overreach_risk_score = 20
             self.overreach_risk_level = "low"
             self.inputs: dict[str, int] = {"x": 1}
-            self.drivers: list[str] = []
+            self.drivers: dict[str, list[str]] = {"readiness": [], "overreach_risk": []}
 
     def fake_compute_readiness_and_risk(combined: list[dict[str, object]]) -> FakeForecast:
         return FakeForecast()
@@ -175,13 +184,13 @@ def test_deterministic_forecast_logs_save_failures_but_returns_payload(
 
     monkeypatch.setitem(sys.modules, "trailtraining.forecast.forecast", fake_module)
     monkeypatch.setattr(
-        coach_mod,
+        coach_io,
         "save_json",
         lambda *args, **kwargs: (_ for _ in ()).throw(OSError("disk full")),
     )
 
     caplog.set_level("WARNING")
-    payload = coach_mod._load_or_compute_deterministic_forecast(tmp_path, combined=[])
+    payload = coach_io.get_or_create_deterministic_forecast(tmp_path, combined=[])
 
     assert isinstance(payload, dict)
     assert payload["result"]["readiness"]["status"] == "steady"

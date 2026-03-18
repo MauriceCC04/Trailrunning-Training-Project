@@ -6,7 +6,7 @@ import math
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Literal, Optional, cast
+from typing import Any, Literal, Optional
 
 from trailtraining import config
 from trailtraining.contracts import (
@@ -233,15 +233,25 @@ def _z_score(
 
 
 def normalize_readiness_status(value: str) -> ReadinessStatus:
-    if value not in {"primed", "steady", "fatigued"}:
-        raise ValueError(f"Invalid readiness status: {value!r}")
-    return cast(ReadinessStatus, value)
+    normalized = value.strip().lower()
+    if normalized == "primed":
+        return "primed"
+    if normalized == "steady":
+        return "steady"
+    if normalized == "fatigued":
+        return "fatigued"
+    raise ValueError(f"Invalid readiness status: {value!r}")
 
 
 def normalize_risk_level(value: str) -> RiskLevel:
-    if value not in {"low", "moderate", "high"}:
-        raise ValueError(f"Invalid risk level: {value!r}")
-    return cast(RiskLevel, value)
+    normalized = value.strip().lower()
+    if normalized == "low":
+        return "low"
+    if normalized == "moderate":
+        return "moderate"
+    if normalized == "high":
+        return "high"
+    raise ValueError(f"Invalid risk level: {value!r}")
 
 
 # ---------------------------------------------------------------------------
