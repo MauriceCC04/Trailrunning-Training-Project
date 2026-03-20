@@ -150,18 +150,21 @@ def cmd_eval_coach(args: argparse.Namespace) -> None:
             n_runs = stats.get("inter_rater_runs")
             if n_runs and int(n_runs) > 1:
                 print(f"Inter-rater runs: {n_runs}")
+                method = str(stats.get("inter_rater_consensus_method", "") or "").strip()
+                if method:
+                    print(f"Consensus method: {method}")
                 high_var = stats.get("high_variance_markers", {})
                 if high_var:
                     flagged = ", ".join(
                         f"{mid}(std={std:.2f})" for mid, std in sorted(high_var.items())
                     )
-                    print(f"⚠️  High-variance markers (ambiguous rubrics): {flagged}")
+                    print(f"High-variance markers (ambiguous rubrics): {flagged}")
 
         if not violations:
-            print("✅ eval-coach: no violations")
+            print("eval-coach: no violations")
             raise SystemExit(0)
 
-        print("⚠️  eval-coach violations:")
+        print("eval-coach violations:")
         for violation in violations:
             sev = violation.get("severity", "unknown")
             code = violation.get("code", "UNKNOWN")
@@ -216,6 +219,9 @@ def cmd_revise_plan(args: argparse.Namespace) -> None:
             txt_p = p.parent / f"{p.stem}.txt"
             if txt_p.exists():
                 print(f"[Saved] {txt_p}")
+            comparison_p = p.parent / f"{p.stem}-comparison.json"
+            if comparison_p.exists():
+                print(f"[Saved] {comparison_p}")
             if auto_reeval:
                 reeval_p = p.parent / f"{p.stem}-reeval.json"
                 if reeval_p.exists():

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import math
+from collections import Counter
 from dataclasses import replace as _dc_replace
 from pathlib import Path
 from typing import Any, Optional
@@ -12,7 +13,20 @@ from trailtraining.llm.constraints import (
     evaluate_training_plan_quality,
     validate_training_plan,
 )
-from trailtraining.llm.soft_eval import SoftEvalConfig, evaluate_training_plan_soft
+from trailtraining.llm.rubrics import (
+    get_default_rubrics,
+    grade_from_score,
+    weighted_score_from_rubric_scores,
+)
+from trailtraining.llm.soft_eval import (
+    SoftEvalConfig,
+    _clean_string_list,
+    _derive_rubric_scores_from_markers,
+    _normalize_confidence,
+    _normalize_marker_results,
+    _normalize_verdict,
+    evaluate_training_plan_soft,
+)
 from trailtraining.util.state import load_json
 
 log = logging.getLogger(__name__)
@@ -22,6 +36,9 @@ _HIGH_VARIANCE_THRESHOLD = 0.5
 
 # Temperature used for inter-rater runs when no explicit temperature is configured.
 _INTER_RATER_DEFAULT_TEMPERATURE = 0.3
+
+# Human-readable label for the multi-run aggregation path.
+_CONSENSUS_METHOD = "median-marker-scores + majority-verdict + representative-narrative"
 
 
 def _load_rollups_near(
@@ -61,8 +78,8 @@ def _compute_marker_variance(all_runs: list[list[dict[str, Any]]]) -> dict[str, 
     """
     Compute per-marker score standard deviation across N evaluation runs.
 
-    Returns a dict mapping marker_id → std (on a 0-5 scale).
-    Only markers with ≥2 data points are included.
+    Returns a dict mapping marker_id -> std (on a 0-5 scale).
+    Only markers with >=2 data points are included.
     """
     by_marker: dict[str, list[float]] = {}
     for run in all_runs:
@@ -88,6 +105,221 @@ def _compute_marker_variance(all_runs: list[list[dict[str, Any]]]) -> dict[str, 
     return out
 
 
+def _median(values: list[float]) -> float:
+    vals = sorted(values)
+    if not vals:
+        return 0.0
+    n = len(vals)
+    mid = n // 2
+    if n % 2 == 1:
+        return vals[mid]
+    return (vals[mid - 1] + vals[mid]) / 2.0
+
+
+def _as_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _select_representative_item(
+    items: list[dict[str, Any]],
+    *,
+    target_score: Optional[float] = None,
+) -> dict[str, Any]:
+    if not items:
+        return {}
+    if target_score is None:
+        return items[0]
+
+    best_item = items[0]
+    best_key: tuple[float, int, int] | None = None
+    for idx, item in enumerate(items):
+        score = _as_float(item.get("score", 0.0))
+        completeness = sum(
+            1
+            for key in ("observation", "evidence", "improvement_hint")
+            if str(item.get(key, "") or "").strip()
+        )
+        key = (abs(score - target_score), -completeness, idx)
+        if best_key is None or key < best_key:
+            best_key = key
+            best_item = item
+    return best_item
+
+
+def _merge_ranked_string_lists(raw_lists: list[Any], *, limit: int) -> list[str]:
+    counts: Counter[str] = Counter()
+    first_seen: dict[str, int] = {}
+    canonical: dict[str, str] = {}
+
+    for outer_idx, raw in enumerate(raw_lists):
+        for item in _clean_string_list(raw):
+            key = item.casefold()
+            counts[key] += 1
+            canonical.setdefault(key, item)
+            first_seen.setdefault(key, outer_idx)
+
+    ranked = sorted(
+        counts,
+        key=lambda key: (-counts[key], first_seen.get(key, 0), canonical[key]),
+    )
+    return [canonical[key] for key in ranked[:limit]]
+
+
+def _select_representative_assessment(all_assessments: list[dict[str, Any]]) -> dict[str, Any]:
+    if not all_assessments:
+        return {}
+    target = _median([_as_float(item.get("overall_score", 0.0)) for item in all_assessments])
+    best = all_assessments[0]
+    best_key: tuple[float, int] | None = None
+    for idx, item in enumerate(all_assessments):
+        key = (abs(_as_float(item.get("overall_score", 0.0)) - target), idx)
+        if best_key is None or key < best_key:
+            best_key = key
+            best = item
+    return best
+
+
+def _aggregate_marker_results(
+    all_runs: list[list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    """
+    Build sparse consensus marker rows across runs.
+
+    This intentionally does NOT normalize to the full rubric set. Missing
+    markers in sparse fixtures should remain missing here so they are not
+    treated as zeros when rubric scores and overall score are derived.
+    """
+    by_marker: dict[str, list[dict[str, Any]]] = {}
+    for run in all_runs:
+        for item in run:
+            if not isinstance(item, dict):
+                continue
+            marker_id = str(item.get("marker_id", "") or "").strip()
+            if not marker_id:
+                continue
+            by_marker.setdefault(marker_id, []).append(item)
+
+    aggregated_raw: list[dict[str, Any]] = []
+    for marker_id, items in by_marker.items():
+        scores = [_as_float(item.get("score", 0.0)) for item in items]
+        agg_score = round(_median(scores), 1)
+
+        verdict_counts = Counter(
+            str(item.get("verdict", "") or "").strip().lower()
+            for item in items
+            if str(item.get("verdict", "") or "").strip().lower() in {"pass", "partial", "fail"}
+        )
+        if verdict_counts:
+            top_count = max(verdict_counts.values())
+            winners = [name for name, count in verdict_counts.items() if count == top_count]
+            agg_verdict = winners[0] if len(winners) == 1 else _normalize_verdict(None, agg_score)
+        else:
+            agg_verdict = _normalize_verdict(None, agg_score)
+
+        representative = _select_representative_item(items, target_score=agg_score)
+        aggregated_raw.append(
+            {
+                "rubric": representative.get("rubric", ""),
+                "marker_id": marker_id,
+                "marker": representative.get("marker", ""),
+                "observation": representative.get("observation"),
+                "verdict": agg_verdict,
+                "score": agg_score,
+                "evidence": representative.get("evidence", ""),
+                "improvement_hint": representative.get("improvement_hint", ""),
+            }
+        )
+
+    return aggregated_raw
+
+
+def _aggregate_soft_assessments(
+    all_assessments: list[dict[str, Any]],
+    *,
+    style: str,
+    variance: dict[str, float],
+) -> dict[str, Any]:
+    representative = _select_representative_assessment(all_assessments)
+
+    marker_results_raw = _aggregate_marker_results(
+        [assessment.get("marker_results") or [] for assessment in all_assessments],
+    )
+
+    rubric_scores = _derive_rubric_scores_from_markers(marker_results_raw, style=style)
+
+    present_rubric_ids = {
+        str(item.get("rubric", "") or "").strip()
+        for item in marker_results_raw
+        if str(item.get("rubric", "") or "").strip()
+    }
+    present_rubrics = [
+        rubric for rubric in get_default_rubrics(style) if rubric.rubric_id in present_rubric_ids
+    ]
+    if not present_rubrics:
+        present_rubrics = list(get_default_rubrics(style))
+
+    overall_score = weighted_score_from_rubric_scores(
+        rubric_scores,
+        rubrics=present_rubrics,
+        style=style,
+    )
+
+    marker_results = _normalize_marker_results(marker_results_raw, style=style)
+
+    confidence_counts = Counter(
+        _normalize_confidence(assessment.get("confidence")) for assessment in all_assessments
+    )
+    confidence = representative.get("confidence") or "medium"
+    if confidence_counts:
+        top_count = max(confidence_counts.values())
+        winners = [name for name, count in confidence_counts.items() if count == top_count]
+        confidence = winners[0] if len(winners) == 1 else _normalize_confidence(confidence)
+    confidence = _normalize_confidence(confidence)
+
+    strengths = _merge_ranked_string_lists(
+        [assessment.get("strengths", []) for assessment in all_assessments],
+        limit=4,
+    )
+    concerns = _merge_ranked_string_lists(
+        [assessment.get("concerns", []) for assessment in all_assessments],
+        limit=3,
+    )
+    suggested_improvements = _merge_ranked_string_lists(
+        [assessment.get("suggested_improvements", []) for assessment in all_assessments],
+        limit=4,
+    )
+    derived_fields = sorted(
+        {
+            field
+            for assessment in all_assessments
+            for field in (assessment.get("derived_fields") or [])
+            if isinstance(field, str) and field.strip()
+        }
+    )
+
+    return {
+        "model": str(representative.get("model", "") or ""),
+        "style": representative.get("style") or style,
+        "primary_goal": str(representative.get("primary_goal", "") or "").strip(),
+        "summary": str(representative.get("summary", "") or "").strip(),
+        "overall_score": overall_score,
+        "grade": grade_from_score(overall_score),
+        "confidence": confidence,
+        "rubric_scores": rubric_scores,
+        "marker_results": marker_results,
+        "strengths": strengths,
+        "concerns": concerns,
+        "suggested_improvements": suggested_improvements,
+        "repaired": any(bool(assessment.get("repaired")) for assessment in all_assessments),
+        "derived_fields": derived_fields,
+        "inter_rater_runs": len(all_assessments),
+        "inter_rater_variance": variance,
+    }
+
+
 def evaluate_training_plan_quality_file(
     coach_json_path: str,
     *,
@@ -101,9 +333,10 @@ def evaluate_training_plan_quality_file(
     Evaluate a training plan file, optionally running the soft evaluator N times.
 
     When soft_eval_runs > 1, the function runs the soft evaluator N times
-    (with temperature > 0 if not explicitly set) and computes per-marker score
-    variance.  Markers with std > 0.5 on a 1-5 scale are flagged in stats as
-    potentially ambiguous rubric definitions.
+    (with temperature > 0 if not explicitly set), aggregates marker scores into
+    a consensus assessment, and computes per-marker score variance. Markers with
+    std > 0.5 on a 1-5 scale are flagged in stats as potentially ambiguous
+    rubric definitions.
     """
     p = Path(coach_json_path).expanduser().resolve()
     raw_obj = load_json(p, default=None)
@@ -121,7 +354,6 @@ def evaluate_training_plan_quality_file(
         n = max(1, int(soft_eval_runs))
 
         if n == 1:
-            # Single run — standard path.
             try:
                 report_raw["soft_assessment"] = evaluate_training_plan_soft(
                     obj.model_dump(mode="json"),
@@ -136,8 +368,6 @@ def evaluate_training_plan_quality_file(
                     stats["soft_eval_error"] = str(exc)
 
         else:
-            # Multi-run for inter-rater reliability measurement.
-            # Use temperature > 0 so runs differ; only takes effect when supported.
             run_cfg = soft_eval_cfg
             if soft_eval_cfg.temperature is None:
                 run_cfg = _dc_replace(soft_eval_cfg, temperature=_INTER_RATER_DEFAULT_TEMPERATURE)
@@ -163,22 +393,30 @@ def evaluate_training_plan_quality_file(
                 if isinstance(stats, dict):
                     stats["soft_eval_error"] = f"All {n} runs failed."
             else:
-                # Use first run as the primary assessment.
-                primary = all_assessments[0]
-
-                # Compute variance and flag high-variance markers.
-                variance = _compute_marker_variance(all_run_markers)
+                successful_runs = len(all_assessments)
+                style = str(all_assessments[0].get("style") or (obj.meta.style or "trailrunning"))
+                variance = _compute_marker_variance(all_run_markers) if successful_runs > 1 else {}
                 high_variance = {
                     mid: std for mid, std in variance.items() if std > _HIGH_VARIANCE_THRESHOLD
                 }
 
-                # Attach inter-rater metadata to the assessment.
-                primary["inter_rater_runs"] = n
-                primary["inter_rater_variance"] = variance
+                if successful_runs > 1:
+                    consensus = _aggregate_soft_assessments(
+                        all_assessments,
+                        style=style,
+                        variance=variance,
+                    )
+                else:
+                    consensus = all_assessments[0]
+                    consensus["inter_rater_runs"] = successful_runs
+                    consensus["inter_rater_variance"] = variance
 
                 stats = report_raw.setdefault("stats", {})
                 if isinstance(stats, dict):
-                    stats["inter_rater_runs"] = n
+                    stats["inter_rater_runs"] = successful_runs
+                    stats["inter_rater_consensus_method"] = _CONSENSUS_METHOD
+                    if successful_runs != n:
+                        stats["soft_eval_failed_runs"] = n - successful_runs
                     if high_variance:
                         stats["high_variance_markers"] = high_variance
 
@@ -186,14 +424,14 @@ def evaluate_training_plan_quality_file(
                     for mid, std in sorted(high_variance.items()):
                         log.warning(
                             "High inter-rater variance on marker '%s' "
-                            "(std=%.2f over %d runs) — "
+                            "(std=%.2f over %d successful runs) - "
                             "this marker's rubric definition may be ambiguous.",
                             mid,
                             std,
-                            n,
+                            successful_runs,
                         )
 
-                report_raw["soft_assessment"] = primary
+                report_raw["soft_assessment"] = consensus
 
     report = EvaluationReportArtifact.model_validate(report_raw)
     return report.model_dump(mode="json"), obj.model_dump(mode="json")

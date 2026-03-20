@@ -135,6 +135,15 @@ def test_run_revise_plan_writes_json_and_txt(tmp_path: Path, monkeypatch) -> Non
         "trailtraining.llm.revise._call_with_schema",
         lambda client, kwargs, schema: _FakeResp(json.dumps(revised)),
     )
+    monkeypatch.setattr(
+        "trailtraining.llm.revise.compare_plans",
+        lambda *args, **kwargs: {
+            "preferred": "plan_b",
+            "reasoning": "The revised plan is more specific.",
+            "plan_a_advantages": [],
+            "plan_b_advantages": ["More specific purpose wording."],
+        },
+    )
 
     text, saved = run_revise_plan(
         cfg=RevisePlanConfig(),
@@ -153,3 +162,54 @@ def test_run_revise_plan_writes_json_and_txt(tmp_path: Path, monkeypatch) -> Non
     txt_path = tmp_path / "revised-plan.txt"
     assert txt_path.exists()
     assert "Training Plan" in txt_path.read_text(encoding="utf-8")
+
+    comparison_path = tmp_path / "revised-plan-comparison.json"
+    assert comparison_path.exists()
+    comparison = json.loads(comparison_path.read_text(encoding="utf-8"))
+    assert comparison["selected_plan"] == "revised_candidate"
+
+
+def test_run_revise_plan_keeps_original_when_pairwise_prefers_it(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    plan_path = tmp_path / "coach_brief_training-plan.json"
+    report_path = tmp_path / "eval_report.json"
+    out_path = tmp_path / "revised-plan.json"
+
+    _write_plan(plan_path)
+    _write_report(report_path)
+
+    original = json.loads(plan_path.read_text(encoding="utf-8"))
+    revised = json.loads(plan_path.read_text(encoding="utf-8"))
+    revised["plan"]["days"][0]["purpose"] = "New but worse wording."
+
+    monkeypatch.setattr("trailtraining.llm.revise._make_openrouter_client", lambda: object())
+    monkeypatch.setattr(
+        "trailtraining.llm.revise._call_with_schema",
+        lambda client, kwargs, schema: _FakeResp(json.dumps(revised)),
+    )
+    monkeypatch.setattr(
+        "trailtraining.llm.revise.compare_plans",
+        lambda *args, **kwargs: {
+            "preferred": "plan_a",
+            "reasoning": "The original plan is clearer and does not introduce regressions.",
+            "plan_a_advantages": ["Cleaner wording."],
+            "plan_b_advantages": [],
+        },
+    )
+
+    run_revise_plan(
+        cfg=RevisePlanConfig(),
+        input_plan_path=str(plan_path),
+        eval_report_path=str(report_path),
+        output_path=str(out_path),
+    )
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["plan"]["days"][0]["purpose"] == original["plan"]["days"][0]["purpose"]
+
+    comparison_path = tmp_path / "revised-plan-comparison.json"
+    comparison = json.loads(comparison_path.read_text(encoding="utf-8"))
+    assert comparison["selected_plan"] == "original"
+    assert comparison["preferred"] == "plan_a"

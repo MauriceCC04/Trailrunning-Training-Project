@@ -84,7 +84,7 @@ def test_evaluate_training_plan_quality_file_records_soft_eval_error(
     assert report.get("soft_assessment") is None
 
 
-def test_evaluate_training_plan_quality_file_multi_run_tracks_high_variance(
+def test_evaluate_training_plan_quality_file_multi_run_builds_consensus(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -99,26 +99,32 @@ def test_evaluate_training_plan_quality_file_multi_run_tracks_high_variance(
             "model": "fake-model",
             "style": "trailrunning",
             "primary_goal": "build trail endurance",
-            "summary": "run 1",
-            "overall_score": 80,
-            "grade": "B",
-            "confidence": "medium",
-            "rubric_scores": {"goal_alignment": {"score": 80, "reasoning": "ok"}},
+            "summary": "run 1 summary",
+            "overall_score": 60,
+            "grade": "D",
+            "confidence": "low",
+            "rubric_scores": {
+                "goal_alignment": {"score": 40, "reasoning": "weak alignment"},
+                "plan_coherence": {"score": 40, "reasoning": "weak coherence"},
+                "explanation_quality": {"score": 40, "reasoning": "weak explanation"},
+                "caution_proportionality": {"score": 40, "reasoning": "weak caution"},
+                "actionability": {"score": 40, "reasoning": "weak actionability"},
+            },
             "marker_results": [
                 {
                     "rubric": "goal_alignment",
-                    "marker_id": "m1",
-                    "marker": "marker 1",
-                    "verdict": "partial",
+                    "marker_id": "goal_specificity",
+                    "marker": "Goal specificity",
+                    "verdict": "fail",
                     "score": 1,
-                    "observation": "obs",
-                    "evidence": "ev",
-                    "improvement_hint": "hint",
+                    "observation": "obs 1",
+                    "evidence": "ev 1",
+                    "improvement_hint": "hint 1",
                 }
             ],
-            "strengths": ["s1"],
-            "concerns": ["c1"],
-            "suggested_improvements": ["i1"],
+            "strengths": ["Clear structure"],
+            "concerns": ["Too generic"],
+            "suggested_improvements": ["Clarify purpose"],
             "repaired": False,
             "derived_fields": [],
         },
@@ -126,26 +132,65 @@ def test_evaluate_training_plan_quality_file_multi_run_tracks_high_variance(
             "model": "fake-model",
             "style": "trailrunning",
             "primary_goal": "build trail endurance",
-            "summary": "run 2",
+            "summary": "run 2 summary",
             "overall_score": 80,
             "grade": "B",
-            "confidence": "medium",
-            "rubric_scores": {"goal_alignment": {"score": 80, "reasoning": "ok"}},
+            "confidence": "high",
+            "rubric_scores": {
+                "goal_alignment": {"score": 80, "reasoning": "ok"},
+                "plan_coherence": {"score": 80, "reasoning": "ok"},
+                "explanation_quality": {"score": 80, "reasoning": "ok"},
+                "caution_proportionality": {"score": 80, "reasoning": "ok"},
+                "actionability": {"score": 80, "reasoning": "ok"},
+            },
             "marker_results": [
                 {
                     "rubric": "goal_alignment",
-                    "marker_id": "m1",
-                    "marker": "marker 1",
-                    "verdict": "pass",
-                    "score": 5,
-                    "observation": "obs",
-                    "evidence": "ev",
-                    "improvement_hint": "hint",
+                    "marker_id": "goal_specificity",
+                    "marker": "Goal specificity",
+                    "verdict": "partial",
+                    "score": 3,
+                    "observation": "obs 2",
+                    "evidence": "ev 2",
+                    "improvement_hint": "hint 2",
                 }
             ],
-            "strengths": ["s1"],
-            "concerns": ["c1"],
-            "suggested_improvements": ["i1"],
+            "strengths": ["Clear structure", "Goal-focused sessions"],
+            "concerns": ["Some wording still generic"],
+            "suggested_improvements": ["Clarify purpose", "Add one terrain cue"],
+            "repaired": False,
+            "derived_fields": [],
+        },
+        {
+            "model": "fake-model",
+            "style": "trailrunning",
+            "primary_goal": "build trail endurance",
+            "summary": "run 3 summary",
+            "overall_score": 100,
+            "grade": "A",
+            "confidence": "high",
+            "rubric_scores": {
+                "goal_alignment": {"score": 100, "reasoning": "strong"},
+                "plan_coherence": {"score": 100, "reasoning": "strong"},
+                "explanation_quality": {"score": 100, "reasoning": "strong"},
+                "caution_proportionality": {"score": 100, "reasoning": "strong"},
+                "actionability": {"score": 100, "reasoning": "strong"},
+            },
+            "marker_results": [
+                {
+                    "rubric": "goal_alignment",
+                    "marker_id": "goal_specificity",
+                    "marker": "Goal specificity",
+                    "verdict": "pass",
+                    "score": 5,
+                    "observation": "obs 3",
+                    "evidence": "ev 3",
+                    "improvement_hint": "hint 3",
+                }
+            ],
+            "strengths": ["Goal-focused sessions"],
+            "concerns": ["Minor wording issue"],
+            "suggested_improvements": ["Add one terrain cue"],
             "repaired": False,
             "derived_fields": [],
         },
@@ -163,10 +208,21 @@ def test_evaluate_training_plan_quality_file_multi_run_tracks_high_variance(
         str(plan_path),
         cfg=ConstraintConfig(min_signal_ids_per_day=0),
         soft_eval_cfg=SoftEvalConfig(enabled=True),
-        soft_eval_runs=2,
+        soft_eval_runs=3,
     )
 
-    assert report["stats"]["inter_rater_runs"] == 2
-    assert "m1" in report["stats"]["high_variance_markers"]
-    assert report["soft_assessment"]["inter_rater_runs"] == 2
-    assert report["soft_assessment"]["inter_rater_variance"]["m1"] > 0.5
+    soft = report["soft_assessment"]
+    assert report["stats"]["inter_rater_runs"] == 3
+    assert report["stats"]["inter_rater_consensus_method"]
+    assert "goal_specificity" in report["stats"]["high_variance_markers"]
+    assert soft["inter_rater_runs"] == 3
+    assert soft["inter_rater_variance"]["goal_specificity"] > 0.5
+    assert soft["summary"] == "run 2 summary"
+    assert soft["confidence"] == "high"
+    assert soft["marker_results"][0]["score"] == 3.0
+    assert soft["marker_results"][0]["verdict"] == "partial"
+    assert soft["rubric_scores"]["goal_alignment"]["score"] == 60.0
+    assert soft["overall_score"] == 60.0
+    assert soft["strengths"][0] == "Clear structure"
+    assert "Goal-focused sessions" in soft["strengths"]
+    assert "Clarify purpose" in soft["suggested_improvements"]

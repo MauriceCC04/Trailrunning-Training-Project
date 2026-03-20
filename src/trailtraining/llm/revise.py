@@ -23,6 +23,7 @@ from trailtraining.llm.shared import (
     recompute_planned_hours,
     training_plan_to_text,
 )
+from trailtraining.llm.soft_eval import SoftEvalConfig, compare_plans
 from trailtraining.util.state import load_json, save_json
 from trailtraining.util.text import _safe_json_snippet
 
@@ -199,6 +200,93 @@ def _apply_lifestyle_notes(plan_obj: dict[str, Any], lifestyle_notes: str) -> No
         plan_obj["meta"] = meta
 
 
+def _pairwise_cfg_for_revision(
+    report_obj: dict[str, Any],
+    cfg: RevisePlanConfig,
+    *,
+    primary_goal: str,
+    lifestyle_notes: str,
+) -> SoftEvalConfig:
+    soft = report_obj.get("soft_assessment") or {}
+    judge_model = (
+        str((soft or {}).get("model", "") or "").strip()
+        or os.getenv("TRAILTRAINING_SOFT_EVAL_MODEL", "").strip()
+        or cfg.model
+    )
+    judge_reasoning = (
+        os.getenv("TRAILTRAINING_SOFT_EVAL_REASONING_EFFORT", "").strip() or cfg.reasoning_effort
+    )
+    judge_verbosity = os.getenv("TRAILTRAINING_SOFT_EVAL_VERBOSITY", "").strip() or cfg.verbosity
+    return SoftEvalConfig(
+        enabled=True,
+        model=judge_model,
+        reasoning_effort=judge_reasoning,
+        verbosity=judge_verbosity,
+        primary_goal=primary_goal,
+        lifestyle_notes=lifestyle_notes,
+    )
+
+
+def _choose_final_plan_with_pairwise(
+    original_plan: dict[str, Any],
+    revised_candidate: dict[str, Any],
+    *,
+    rollups: Optional[dict[str, Any]],
+    report_obj: dict[str, Any],
+    cfg: RevisePlanConfig,
+    primary_goal: str,
+    lifestyle_notes: str,
+) -> tuple[dict[str, Any], Optional[dict[str, Any]]]:
+    original_json = json.dumps(original_plan, sort_keys=True, default=str)
+    candidate_json = json.dumps(revised_candidate, sort_keys=True, default=str)
+    if original_json == candidate_json:
+        return revised_candidate, {
+            "preferred": "tie",
+            "reasoning": "Original plan and revised candidate were identical after normalization.",
+            "plan_a_advantages": [],
+            "plan_b_advantages": [],
+            "selected_plan": "revised_candidate",
+        }
+
+    pairwise_cfg = _pairwise_cfg_for_revision(
+        report_obj,
+        cfg,
+        primary_goal=primary_goal,
+        lifestyle_notes=lifestyle_notes,
+    )
+
+    try:
+        comparison = compare_plans(
+            original_plan,
+            revised_candidate,
+            rollups=rollups,
+            cfg=pairwise_cfg,
+        )
+    except Exception as exc:
+        log.warning("Pairwise comparison failed; keeping revised candidate: %s", exc)
+        return revised_candidate, None
+
+    selected_plan = revised_candidate
+    selected_label = "revised_candidate"
+    preferred = str(comparison.get("preferred", "tie") or "tie").strip().lower()
+    if preferred == "plan_a":
+        selected_plan = original_plan
+        selected_label = "original"
+        log.warning(
+            "Pairwise judge preferred the original plan; saving original as the final choice."
+        )
+
+    comparison_payload = {
+        "judge_model": pairwise_cfg.model,
+        "preferred": preferred,
+        "reasoning": str(comparison.get("reasoning", "") or "").strip(),
+        "plan_a_advantages": comparison.get("plan_a_advantages", []),
+        "plan_b_advantages": comparison.get("plan_b_advantages", []),
+        "selected_plan": selected_label,
+    }
+    return selected_plan, comparison_payload
+
+
 def run_revise_plan(
     *,
     cfg: RevisePlanConfig,
@@ -289,7 +377,17 @@ def run_revise_plan(
     if isinstance(rollups, dict):
         apply_eval_coach_guardrails(obj, rollups)
 
-    final_obj = TrainingPlanArtifact.model_validate(obj).model_dump(mode="json")
+    revised_candidate = TrainingPlanArtifact.model_validate(obj).model_dump(mode="json")
+    final_obj, comparison_payload = _choose_final_plan_with_pairwise(
+        plan_obj,
+        revised_candidate,
+        rollups=rollups,
+        report_obj=report_obj,
+        cfg=cfg,
+        primary_goal=primary_goal,
+        lifestyle_notes=lifestyle_notes,
+    )
+    final_obj = TrainingPlanArtifact.model_validate(final_obj).model_dump(mode="json")
 
     out_p = (
         Path(output_path).expanduser().resolve()
@@ -301,6 +399,13 @@ def run_revise_plan(
 
     txt_p = out_p.parent / f"{out_p.stem}.txt"
     txt_p.write_text(training_plan_to_text(final_obj), encoding="utf-8")
+
+    if comparison_payload:
+        comparison_path = out_p.parent / f"{out_p.stem}-comparison.json"
+        try:
+            save_json(comparison_path, comparison_payload, compact=False)
+        except Exception as exc:
+            log.warning("Could not write pairwise comparison file: %s", exc)
 
     if auto_reeval:
         _run_auto_reeval(
@@ -351,11 +456,11 @@ def _run_auto_reeval(
 
     if delta < 0:
         msg = (
-            f"⚠️  Revision degraded deterministic score: "
-            f"{original_score:.0f} → {revised_score:.0f} ({delta:+.1f}). "
+            f"Revision degraded deterministic score: "
+            f"{original_score:.0f} -> {revised_score:.0f} ({delta:+.1f}). "
             f"See {reeval_path.name} for violations."
         )
         log.warning(msg)
         print(msg)
     else:
-        print(f"✅ Auto-reeval: score {original_score:.0f} → {revised_score:.0f} ({delta:+.1f}).")
+        print(f"Auto-reeval: score {original_score:.0f} -> {revised_score:.0f} ({delta:+.1f}).")

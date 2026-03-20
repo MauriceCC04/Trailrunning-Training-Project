@@ -131,7 +131,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # ---- run-all ----
     run_all_p = sub.add_parser(
-        "run-all", help="Run full pipeline (auto: Garmin OR Intervals → Strava → Combine)"
+        "run-all", help="Run full pipeline (auto: Garmin OR Intervals -> Strava -> Combine)"
     )
     _add_clean_args(run_all_p)
     run_all_p.add_argument(
@@ -216,7 +216,10 @@ def build_parser() -> argparse.ArgumentParser:
         default=1,
         dest="soft_eval_runs",
         metavar="N",
-        help="Run the soft evaluator N times and report per-marker score variance.",
+        help=(
+            "Run the soft evaluator N times, aggregate the runs into a consensus assessment, "
+            "and report per-marker score variance."
+        ),
     )
     _add_goal_arg(eval_p)
     _add_lifestyle_notes_arg(eval_p)
@@ -272,7 +275,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # ---- run-all-intervals ----
     run_all_int_p = sub.add_parser(
-        "run-all-intervals", help="Run full pipeline (Intervals → Strava → Combine)"
+        "run-all-intervals", help="Run full pipeline (Intervals -> Strava -> Combine)"
     )
     _add_clean_args(run_all_int_p)
     run_all_int_p.set_defaults(func=cmd_run_all_intervals)

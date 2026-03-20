@@ -5,7 +5,7 @@ import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Optional, TypedDict
 
 from trailtraining.contracts import SoftAssessmentArtifact
 from trailtraining.llm.rubrics import (
@@ -32,6 +32,17 @@ _RUBRIC_BATCHES: list[tuple[str, list[str]]] = [
     ("caution", ["caution_proportionality"]),
     ("actionability", ["actionability"]),
 ]
+
+
+class _FewShotCase(TypedDict):
+    plan_snippet: str
+    marker_results: list[dict[str, Any]]
+
+
+class _FewShotExample(TypedDict):
+    label: str
+    plan_snippet: str
+    marker_results: list[dict[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -487,6 +498,8 @@ def _resolve_style_goal_and_lifestyle(
 
 
 # Keep backward-compatible alias used in compare_plans
+
+
 def _resolve_style_and_goal(
     plan_obj: dict[str, Any],
     cfg: SoftEvalConfig,
@@ -567,7 +580,7 @@ def _lifestyle_context_for_eval(lifestyle_notes: str) -> list[str]:
     if not notes:
         return []
     return [
-        "## Lifestyle constraints (IMPORTANT — affects how you score)",
+        "## Lifestyle constraints (IMPORTANT - affects how you score)",
         f"The athlete has declared these schedule/lifestyle constraints: {notes}",
         "",
         "When scoring markers, account for these constraints:",
@@ -584,6 +597,310 @@ def _lifestyle_context_for_eval(lifestyle_notes: str) -> list[str]:
         "  not against an idealized unconstrained trail plan.",
         "",
     ]
+
+
+def _few_shot_examples_for_batch(rubric_ids: list[str], *, style: str) -> list[str]:
+    """Return compact rubric-local examples for the batch prompt.
+
+    These are intentionally small. The goal is to anchor score interpretation
+    and JSON structure without overwhelming the real plan context.
+    """
+    if not rubric_ids:
+        return []
+
+    lines: list[str] = [
+        "## Few-shot examples (illustrative mini-cases)",
+        "These are SHORT examples showing how to score this kind of rubric.",
+        "In the real answer, you MUST still score every expected marker_id for the actual plan.",
+        "",
+    ]
+
+    rubric_set = set(rubric_ids)
+
+    if {"goal_alignment", "plan_coherence"} & rubric_set:
+        strong_case: _FewShotCase
+        weak_case: _FewShotCase
+
+        if style == "triathlon":
+            strong_case = {
+                "plan_snippet": (
+                    "Tue threshold bike, Wed easy run, Thu swim drills, Sat long ride with brick run, "
+                    "Sun recovery swim. Hard sessions are separated and all three disciplines appear."
+                ),
+                "marker_results": [
+                    {
+                        "rubric": "goal_alignment",
+                        "marker_id": "discipline_balance",
+                        "marker": "Discipline balance",
+                        "observation": "The week includes swim, bike, and run with one key bike session and one brick.",
+                        "verdict": "pass",
+                        "score": 4.5,
+                        "evidence": "Tue threshold bike; Thu swim drills; Sat long ride + brick run; Sun recovery swim.",
+                        "improvement_hint": "Add race-pace detail to one discipline if the athlete is close to an event.",
+                    },
+                    {
+                        "rubric": "plan_coherence",
+                        "marker_id": "hard_easy_spacing",
+                        "marker": "Hard/easy spacing",
+                        "observation": "The harder sessions are separated by easier or lower-stress days.",
+                        "verdict": "pass",
+                        "score": 4.0,
+                        "evidence": "Threshold bike Tuesday is followed by easy run Wednesday before the next key session.",
+                        "improvement_hint": "Keep the same spacing pattern if adding another hard session later.",
+                    },
+                ],
+            }
+            weak_case = {
+                "plan_snippet": (
+                    "Five straight hard run sessions, no swim, one token bike ride, and no rest day."
+                ),
+                "marker_results": [
+                    {
+                        "rubric": "goal_alignment",
+                        "marker_id": "discipline_balance",
+                        "marker": "Discipline balance",
+                        "observation": "The week is almost entirely run-focused despite a triathlon goal.",
+                        "verdict": "fail",
+                        "score": 1.0,
+                        "evidence": "No swim sessions and only one token bike ride appear in the week.",
+                        "improvement_hint": "Redistribute stress across swim, bike, and run instead of stacking run load only.",
+                    },
+                    {
+                        "rubric": "plan_coherence",
+                        "marker_id": "week_coherence",
+                        "marker": "Week coherence (score last)",
+                        "observation": "Cumulative fatigue would rise unchecked because the week lacks recovery and discipline balance.",
+                        "verdict": "fail",
+                        "score": 1.0,
+                        "evidence": "Five hard run days are placed back-to-back with no real recovery day.",
+                        "improvement_hint": "Insert recovery days and distribute key stress across disciplines.",
+                    },
+                ],
+            }
+        else:
+            strong_case = {
+                "plan_snippet": (
+                    "Tue hill reps, Wed easy road run, Sat long trail run with climbing, Sun rest. "
+                    "One weekday bike ride is explicitly framed as low-impact aerobic support."
+                ),
+                "marker_results": [
+                    {
+                        "rubric": "goal_alignment",
+                        "marker_id": "trail_specificity",
+                        "marker": "Trail specificity",
+                        "observation": "The key sessions target trail demands through climbing and long trail-specific durability work.",
+                        "verdict": "pass",
+                        "score": 4.5,
+                        "evidence": "Tue hill reps and Sat long trail run with climbing are explicit.",
+                        "improvement_hint": "Add descending technique cues if technical downhill running is a race limiter.",
+                    },
+                    {
+                        "rubric": "plan_coherence",
+                        "marker_id": "hard_easy_spacing",
+                        "marker": "Hard/easy spacing",
+                        "observation": "The harder trail sessions are separated by a clearly easier day and followed by rest.",
+                        "verdict": "pass",
+                        "score": 4.0,
+                        "evidence": "Wed easy road run sits between Tue hills and Sat long trail work; Sun is rest.",
+                        "improvement_hint": "Preserve this spacing if adding one more quality session in a future week.",
+                    },
+                ],
+            }
+            weak_case = {
+                "plan_snippet": (
+                    "Mon intervals, Tue tempo, Wed hill sprints, Thu long run at race pace, Fri hard strength, no rest day."
+                ),
+                "marker_results": [
+                    {
+                        "rubric": "goal_alignment",
+                        "marker_id": "non_competing_focus",
+                        "marker": "Non-competing focus",
+                        "observation": "Extra work adds fatigue but is not connected to the trail goal or recovery needs.",
+                        "verdict": "fail",
+                        "score": 1.0,
+                        "evidence": "Hard strength and extra sessions are added without any rationale tying them to the race goal.",
+                        "improvement_hint": "Keep non-running work only when it clearly supports durability, recovery, or schedule constraints.",
+                    },
+                    {
+                        "rubric": "plan_coherence",
+                        "marker_id": "week_coherence",
+                        "marker": "Week coherence (score last)",
+                        "observation": "The week stacks hard stress without recovery, so fatigue would likely accumulate unsustainably.",
+                        "verdict": "fail",
+                        "score": 1.0,
+                        "evidence": "Multiple hard days appear back-to-back and no rest day is present.",
+                        "improvement_hint": "Break up key sessions with easy or rest days and remove non-essential extra stress.",
+                    },
+                ],
+            }
+
+        lines.extend(
+            [
+                "Example A - stronger goal/coherence case",
+                strong_case["plan_snippet"],
+                _safe_json_snippet(
+                    {"marker_results": strong_case["marker_results"]}, max_chars=3_500
+                ),
+                "",
+                "Example B - weaker goal/coherence case",
+                weak_case["plan_snippet"],
+                _safe_json_snippet(
+                    {"marker_results": weak_case["marker_results"]}, max_chars=3_500
+                ),
+                "",
+            ]
+        )
+
+    elif "explanation_quality" in rubric_set:
+        explanation_examples: list[_FewShotExample] = [
+            {
+                "label": "Example A - strong explanation quality",
+                "plan_snippet": (
+                    "Thu tempo: 3 x 8 min uphill at steady threshold. Purpose: uphill lactate clearance and climbing durability for the athlete's trail race."
+                ),
+                "marker_results": [
+                    {
+                        "rubric": "explanation_quality",
+                        "marker_id": "specificity",
+                        "marker": "Specificity",
+                        "observation": "The explanation names the exact workout and explains why it matters for the athlete's race demands.",
+                        "verdict": "pass",
+                        "score": 4.5,
+                        "evidence": "It specifies 3 x 8 min uphill and connects it to climbing durability and lactate clearance.",
+                        "improvement_hint": "Add recovery duration between reps if the athlete needs more execution detail.",
+                    }
+                ],
+            },
+            {
+                "label": "Example B - weak explanation quality",
+                "plan_snippet": "Thu run. Purpose: get fitter and build confidence.",
+                "marker_results": [
+                    {
+                        "rubric": "explanation_quality",
+                        "marker_id": "non_generic_language",
+                        "marker": "Non-generic language",
+                        "observation": "The wording is motivational but generic and does not clarify what adaptation the session targets.",
+                        "verdict": "fail",
+                        "score": 1.5,
+                        "evidence": "The purpose says only 'get fitter and build confidence'.",
+                        "improvement_hint": "Replace generic encouragement with the session's concrete physiological or race-specific purpose.",
+                    }
+                ],
+            },
+        ]
+        for example in explanation_examples:
+            lines.extend(
+                [
+                    example["label"],
+                    example["plan_snippet"],
+                    _safe_json_snippet(
+                        {"marker_results": example["marker_results"]}, max_chars=2_500
+                    ),
+                    "",
+                ]
+            )
+
+    elif "caution_proportionality" in rubric_set:
+        caution_examples: list[_FewShotExample] = [
+            {
+                "label": "Example A - proportionate caution",
+                "plan_snippet": (
+                    "Sleep and HRV are missing, so the plan keeps one key session but trims total load and explicitly tells the athlete to downshift if fatigue rises."
+                ),
+                "marker_results": [
+                    {
+                        "rubric": "caution_proportionality",
+                        "marker_id": "missing_data_behavioral_response",
+                        "marker": "Missing data behavioral response",
+                        "observation": "The plan responds to missing recovery data by being slightly more conservative rather than pretending certainty.",
+                        "verdict": "pass",
+                        "score": 4.0,
+                        "evidence": "The key session stays, but total load is trimmed and an explicit downshift instruction is included.",
+                        "improvement_hint": "Name the specific trigger for reducing intensity if fatigue or soreness appears.",
+                    }
+                ],
+            },
+            {
+                "label": "Example B - poor caution handling",
+                "plan_snippet": (
+                    "No recovery metrics are available, but the plan still prescribes maximal intervals and a big volume jump without acknowledging uncertainty."
+                ),
+                "marker_results": [
+                    {
+                        "rubric": "caution_proportionality",
+                        "marker_id": "missing_data_acknowledgment",
+                        "marker": "Missing data acknowledgment",
+                        "observation": "The plan behaves as if recovery data were complete even though key signals are absent.",
+                        "verdict": "fail",
+                        "score": 1.0,
+                        "evidence": "There is no note about missing sleep, HRV, or resting HR data before prescribing harder work.",
+                        "improvement_hint": "Explicitly acknowledge missing telemetry and reduce certainty in the prescription.",
+                    }
+                ],
+            },
+        ]
+        for example in caution_examples:
+            lines.extend(
+                [
+                    example["label"],
+                    example["plan_snippet"],
+                    _safe_json_snippet(
+                        {"marker_results": example["marker_results"]}, max_chars=2_500
+                    ),
+                    "",
+                ]
+            )
+
+    elif "actionability" in rubric_set:
+        actionability_examples: list[_FewShotExample] = [
+            {
+                "label": "Example A - actionable session",
+                "plan_snippet": (
+                    "Sat long run: 2 h easy on rolling trail, last 20 min steady uphill, hike steep grades, carry fuel and practice race vest setup."
+                ),
+                "marker_results": [
+                    {
+                        "rubric": "actionability",
+                        "marker_id": "session_clarity",
+                        "marker": "Session clarity",
+                        "observation": "The athlete can execute this session directly because duration, terrain, pacing, and fueling details are explicit.",
+                        "verdict": "pass",
+                        "score": 4.5,
+                        "evidence": "The plan specifies 2 h easy, rolling trail terrain, last 20 min steady uphill, and race-vest practice.",
+                        "improvement_hint": "Add an RPE range if the athlete prefers effort-based pacing cues.",
+                    }
+                ],
+            },
+            {
+                "label": "Example B - vague session",
+                "plan_snippet": "Sat run. Do something challenging but controlled.",
+                "marker_results": [
+                    {
+                        "rubric": "actionability",
+                        "marker_id": "followability",
+                        "marker": "Followability",
+                        "observation": "The athlete would have to guess duration, intensity, and terrain, so the instruction is hard to follow consistently.",
+                        "verdict": "fail",
+                        "score": 1.5,
+                        "evidence": "No duration, pace, terrain, or workout structure is provided.",
+                        "improvement_hint": "State the duration, target intensity, terrain, and any key execution rules.",
+                    }
+                ],
+            },
+        ]
+        for example in actionability_examples:
+            lines.extend(
+                [
+                    example["label"],
+                    example["plan_snippet"],
+                    _safe_json_snippet(
+                        {"marker_results": example["marker_results"]}, max_chars=2_500
+                    ),
+                    "",
+                ]
+            )
+
+    return lines
 
 
 # ---------------------------------------------------------------------------
@@ -607,7 +924,7 @@ def _build_batch_prompt(
 
     instructions = [
         "You are evaluating specific rubrics of an endurance training plan.",
-        "Score ONLY the rubrics and markers listed below — do not evaluate other rubrics.",
+        "Score ONLY the rubrics and markers listed below - do not evaluate other rubrics.",
         "",
         "For each marker, you MUST follow this exact order in your JSON output:",
         "  1. observation: Describe what you observe in the plan relevant to this marker.",
@@ -631,11 +948,12 @@ def _build_batch_prompt(
     return "\n".join(
         [
             *instructions,
+            *_few_shot_examples_for_batch(rubric_ids, style=style),
             *_lifestyle_context_for_eval(lifestyle_notes),
             "## Rubrics to evaluate in this call",
             rubric_text,
             "",
-            "## Expected markers — include exactly these in marker_results",
+            "## Expected markers - include exactly these in marker_results",
             _safe_json_snippet(expected, max_chars=8_000),
             "",
             "## Deterministic evaluation report (context)",
@@ -648,7 +966,7 @@ def _build_batch_prompt(
             _safe_json_snippet(plan_obj, max_chars=40_000),
             "",
             "## Output rules",
-            "- Return JSON only — no markdown fences, no commentary.",
+            "- Return JSON only - no markdown fences, no commentary.",
             "- Include one marker_results item for every expected marker_id.",
             "- observation MUST describe what you see before you assign a score.",
             "- evidence MUST cite specific content from the plan.",
@@ -683,7 +1001,7 @@ def _build_synthesis_prompt(
             "## Output rules",
             "- Return JSON only.",
             "- summary: 2-3 sentences on overall plan quality, grounded in markers.",
-            "- confidence: low / medium / high — how confident are you in the assessment?",
+            "- confidence: low / medium / high - how confident are you in the assessment?",
             "- strengths: 2-4 concrete strengths from the plan (not generic praise).",
             "- concerns: 1-3 concrete concerns tied to low-scoring markers.",
             "- suggested_improvements: 2-4 specific, actionable improvements.",
@@ -834,6 +1152,9 @@ def _generate_marker_results_only(
         if rubric_ids
         else render_rubrics_for_prompt(style=style, primary_goal=primary_goal)
     )
+    few_shot: list[str] = []
+    if rubric_ids:
+        few_shot = _few_shot_examples_for_batch(rubric_ids, style=style)
     kwargs: dict[str, Any] = {
         "model": cfg.model,
         "instructions": "Return only valid JSON. No markdown.",
@@ -846,6 +1167,7 @@ def _generate_marker_results_only(
                 f"Style: {style}",
                 f"Primary goal: {primary_goal}",
                 "",
+                *few_shot,
                 *_lifestyle_context_for_eval(lifestyle_notes),
                 "## Expected markers",
                 _safe_json_snippet(expected, max_chars=15_000),
@@ -1132,19 +1454,20 @@ def compare_plans(
     rollups: Optional[dict[str, Any]],
     cfg: SoftEvalConfig,
 ) -> dict[str, Any]:
-    style, primary_goal = _resolve_style_and_goal(plan_a, cfg)
+    style, primary_goal, lifestyle_notes = _resolve_style_goal_and_lifestyle(plan_a, cfg)
     client = make_openrouter_client()
 
     prompt = "\n".join(
         [
             "Compare these two training plans and determine which is better.",
             "First reason through what you observe in each plan, then give your preference.",
-            "Do NOT simply prefer the longer or more complex plan — prefer the one that better",
+            "Do NOT simply prefer the longer or more complex plan - prefer the one that better",
             "serves the athlete's goal given their current state.",
             "",
             f"Style: {style}",
             f"Primary goal: {primary_goal}",
             "",
+            *_lifestyle_context_for_eval(lifestyle_notes),
             "## Plan A",
             _safe_json_snippet(plan_a, max_chars=25_000),
             "",
