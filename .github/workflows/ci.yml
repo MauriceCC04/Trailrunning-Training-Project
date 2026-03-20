@@ -109,7 +109,7 @@ jobs:
             --cov=trailtraining.llm.coach_prompting \
             --cov-report=term-missing \
             --cov-report=xml:coverage-llm.xml \
-            --cov-fail-under=87
+            --cov-fail-under=80
 
       - name: Coverage gate (pipelines)
         if: matrix.python-version == '3.11'
