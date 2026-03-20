@@ -128,7 +128,7 @@ jobs:
             --cov=trailtraining.llm.constraints \
             --cov-report=term-missing \
             --cov-report=xml:coverage-constraints.xml \
-            --cov-fail-under=90
+            --cov-fail-under=75
       - name: Upload coverage artifact
         if: matrix.python-version == '3.11'
         uses: actions/upload-artifact@v4

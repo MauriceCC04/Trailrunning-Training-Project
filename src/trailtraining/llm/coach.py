@@ -40,6 +40,8 @@ from trailtraining.llm.shared import call_with_schema as _call_with_schema
 from trailtraining.llm.shared import extract_json_object as _extract_json_object
 from trailtraining.llm.shared import make_openrouter_client as _make_openrouter_client
 from trailtraining.llm.shared import recompute_planned_hours as _recompute_planned_hours
+from trailtraining.llm.signals import build_retrieval_context
+from trailtraining.llm.windowing import normalize_plan_days
 from trailtraining.util.errors import MissingArtifactError
 from trailtraining.util.state import _json_default
 
@@ -69,6 +71,34 @@ def _as_list(value: Any) -> list[Any]:
 
 def _as_str(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
+
+
+def _unique_strs(values: Any) -> list[str]:
+    if not isinstance(values, list):
+        return []
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        s = value.strip()
+        if not s or s in seen:
+            continue
+        seen.add(s)
+        out.append(s)
+    return out
+
+
+def _stringify_signal_value(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if value is None:
+        return "null"
+    try:
+        return json.dumps(value, ensure_ascii=False)
+    except Exception:
+        return str(value)
 
 
 def _lifestyle_notes_section(lifestyle_notes: str) -> list[str]:
@@ -300,6 +330,206 @@ def _serialize_effective_constraints(
     }
 
 
+def _build_signal_registry_lookup(
+    combined: list[dict[str, Any]],
+    rollups: Optional[dict[str, Any]],
+    deterministic_forecast: Optional[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    retrieval_weeks = int(os.getenv("TRAILTRAINING_COACH_RETRIEVAL_WEEKS", "8"))
+    ctx = build_retrieval_context(combined, rollups, retrieval_weeks=retrieval_weeks)
+    rows_raw = ctx.get("signal_registry")
+    rows = list(rows_raw) if isinstance(rows_raw, list) else []
+
+    if isinstance(deterministic_forecast, dict):
+        rows.extend(_coach_prompting._forecast_signal_rows(deterministic_forecast))
+
+    lookup: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        signal_id = _as_str(row.get("signal_id"))
+        if signal_id and signal_id not in lookup:
+            lookup[signal_id] = row
+    return lookup
+
+
+def _collect_used_signal_ids(plan_obj: dict[str, Any]) -> list[str]:
+    ordered: list[str] = []
+    seen: set[str] = set()
+
+    def _add_many(raw: Any) -> None:
+        if not isinstance(raw, list):
+            return
+        for item in raw:
+            if not isinstance(item, str):
+                continue
+            signal_id = item.strip()
+            if not signal_id or signal_id in seen:
+                continue
+            seen.add(signal_id)
+            ordered.append(signal_id)
+
+    readiness = _as_dict(plan_obj.get("readiness"))
+    _add_many(readiness.get("signal_ids"))
+
+    recovery = _as_dict(plan_obj.get("recovery"))
+    _add_many(recovery.get("signal_ids"))
+
+    for risk in _as_list(plan_obj.get("risks")):
+        if isinstance(risk, dict):
+            _add_many(risk.get("signal_ids"))
+
+    for day in normalize_plan_days(plan_obj):
+        _add_many(day.get("signal_ids"))
+
+    return ordered
+
+
+def _build_deterministic_citations(
+    plan_obj: dict[str, Any],
+    combined: list[dict[str, Any]],
+    rollups: Optional[dict[str, Any]],
+    deterministic_forecast: Optional[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    used_signal_ids = _collect_used_signal_ids(plan_obj)
+    registry = _build_signal_registry_lookup(combined, rollups, deterministic_forecast)
+
+    existing_by_signal: dict[str, dict[str, Any]] = {}
+    for item in _as_list(plan_obj.get("citations")):
+        if not isinstance(item, dict):
+            continue
+        signal_id = _as_str(item.get("signal_id"))
+        if signal_id and signal_id not in existing_by_signal:
+            existing_by_signal[signal_id] = item
+
+    citations: list[dict[str, Any]] = []
+    for idx, signal_id in enumerate(used_signal_ids, start=1):
+        row = registry.get(signal_id)
+        existing = existing_by_signal.get(signal_id)
+
+        source = ""
+        date_range = ""
+        value: Any = None
+
+        if row is not None:
+            source = _as_str(row.get("source"))
+            date_range = _as_str(row.get("date_range"))
+            value = row.get("value")
+        elif existing is not None:
+            source = _as_str(existing.get("source"))
+            date_range = _as_str(existing.get("date_range"))
+            value = existing.get("value")
+
+        citations.append(
+            {
+                "citation_id": f"c{idx}",
+                "signal_id": signal_id,
+                "source": source,
+                "date_range": date_range,
+                "value": _stringify_signal_value(value),
+            }
+        )
+
+    return citations
+
+
+def _citation_ids_for_signal_ids(
+    citations: list[dict[str, Any]],
+    signal_ids: list[str],
+) -> list[str]:
+    by_signal: dict[str, str] = {}
+    for citation in citations:
+        signal_id = _as_str(citation.get("signal_id"))
+        citation_id_str = _as_str(citation.get("citation_id"))
+        if signal_id and citation_id_str and signal_id not in by_signal:
+            by_signal[signal_id] = citation_id_str
+
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for signal_id in signal_ids:
+        maybe_citation_id = by_signal.get(signal_id)
+        if not maybe_citation_id or maybe_citation_id in seen:
+            continue
+        seen.add(maybe_citation_id)
+        ordered.append(maybe_citation_id)
+    return ordered
+
+
+def _support_level_for(
+    signal_ids: list[str],
+    citation_ids: list[str],
+) -> str:
+    if not signal_ids or not citation_ids:
+        return "unsupported"
+    if len(set(citation_ids)) < len(set(signal_ids)):
+        return "weak"
+    return "supported"
+
+
+def _build_deterministic_claim_attributions(plan_obj: dict[str, Any]) -> list[dict[str, Any]]:
+    citations = [item for item in _as_list(plan_obj.get("citations")) if isinstance(item, dict)]
+    out: list[dict[str, Any]] = []
+    counter = 1
+
+    def _append(field_path: str, claim_text: Any, signal_ids_raw: Any) -> None:
+        nonlocal counter
+        text = _as_str(claim_text)
+        if not text:
+            return
+        signal_ids = _unique_strs(signal_ids_raw if isinstance(signal_ids_raw, list) else [])
+        citation_ids = _citation_ids_for_signal_ids(citations, signal_ids)
+        out.append(
+            {
+                "claim_id": f"cl{counter}",
+                "field_path": field_path,
+                "claim_text": text,
+                "signal_ids": signal_ids,
+                "citation_ids": citation_ids,
+                "support_level": _support_level_for(signal_ids, citation_ids),
+            }
+        )
+        counter += 1
+
+    readiness = _as_dict(plan_obj.get("readiness"))
+    _append("readiness.rationale", readiness.get("rationale"), readiness.get("signal_ids"))
+
+    recovery = _as_dict(plan_obj.get("recovery"))
+    recovery_signal_ids = recovery.get("signal_ids")
+    for idx, action in enumerate(_as_list(recovery.get("actions"))):
+        _append(f"recovery.actions[{idx}]", action, recovery_signal_ids)
+
+    for idx, risk in enumerate(_as_list(plan_obj.get("risks"))):
+        if not isinstance(risk, dict):
+            continue
+        _append(f"risks[{idx}].message", risk.get("message"), risk.get("signal_ids"))
+
+    for idx, day in enumerate(normalize_plan_days(plan_obj)):
+        _append(f"plan.days[{idx}].purpose", day.get("purpose"), day.get("signal_ids"))
+
+    return out
+
+
+def _finalize_training_plan_artifact(
+    plan_obj: dict[str, Any],
+    *,
+    combined: list[dict[str, Any]],
+    rollups: Optional[dict[str, Any]],
+    deterministic_forecast: Optional[dict[str, Any]],
+    effective: Optional[EffectiveConstraintContext],
+) -> dict[str, Any]:
+    plan_obj["effective_constraints"] = _serialize_effective_constraints(effective)
+    plan_obj["citations"] = _build_deterministic_citations(
+        plan_obj,
+        combined,
+        rollups,
+        deterministic_forecast,
+    )
+    plan_obj["claim_attributions"] = _build_deterministic_claim_attributions(plan_obj)
+    obj = ensure_training_plan_shape(plan_obj)
+    _recompute_planned_hours(obj)
+    return obj
+
+
 def _merge_machine_plan_and_explanations(
     machine_obj: dict[str, Any],
     explanation_obj: dict[str, Any],
@@ -316,7 +546,7 @@ def _merge_machine_plan_and_explanations(
     }
 
     merged_days: list[dict[str, Any]] = []
-    for idx, day in enumerate((_as_dict(machine_obj.get("plan"))).get("days", [])):
+    for idx, day in enumerate(_as_dict(machine_obj.get("plan")).get("days", [])):
         if not isinstance(day, dict):
             continue
         key = str(day.get("date"))
@@ -333,11 +563,7 @@ def _merge_machine_plan_and_explanations(
                 "terrain": _as_str(day.get("terrain")),
                 "workout": _as_str(day.get("workout")),
                 "purpose": _as_str(expl.get("purpose")),
-                "signal_ids": [
-                    str(s).strip()
-                    for s in expl.get("signal_ids", [])
-                    if isinstance(s, str) and str(s).strip()
-                ],
+                "signal_ids": _unique_strs(expl.get("signal_ids")),
             }
         )
 
@@ -345,13 +571,9 @@ def _merge_machine_plan_and_explanations(
         "meta": dict(_as_dict(machine_obj.get("meta"))),
         "snapshot": _as_dict(explanation_obj.get("snapshot")),
         "readiness": {
-            "status": _as_str((_as_dict(machine_obj.get("readiness"))).get("status")) or "steady",
+            "status": _as_str(_as_dict(machine_obj.get("readiness")).get("status")) or "steady",
             "rationale": _as_str(explanation_obj.get("readiness_rationale")),
-            "signal_ids": [
-                str(s).strip()
-                for s in explanation_obj.get("readiness_signal_ids", [])
-                if isinstance(s, str) and str(s).strip()
-            ],
+            "signal_ids": _unique_strs(explanation_obj.get("readiness_signal_ids")),
         },
         "plan": {
             "weekly_totals": dict((_as_dict(machine_obj.get("plan"))).get("weekly_totals") or {}),
@@ -384,6 +606,7 @@ def _run_training_plan_legacy(
     resolved_goal: str,
     deterministic_forecast: Optional[dict[str, Any]],
     rollups: Optional[dict[str, Any]],
+    combined: list[dict[str, Any]],
     output_path: Optional[str],
     *,
     prompting_dir: Path,
@@ -397,9 +620,14 @@ def _run_training_plan_legacy(
     _apply_primary_goal(obj, resolved_goal)
     _apply_lifestyle_notes(obj, cfg.lifestyle_notes)
     _apply_deterministic_readiness(obj, deterministic_forecast)
-    if "effective_constraints" not in obj:
-        obj["effective_constraints"] = _serialize_effective_constraints(effective)
     _apply_eval_coach_guardrails_compat(obj, rollups, effective)
+    obj = _finalize_training_plan_artifact(
+        obj,
+        combined=combined,
+        rollups=rollups,
+        deterministic_forecast=deterministic_forecast,
+        effective=effective,
+    )
 
     out_path = save_training_plan_output(
         output_path,
@@ -509,7 +737,7 @@ def _run_training_plan_pipeline(
         "claim_attributions": [],
         "effective_constraints": _serialize_effective_constraints(effective),
     }
-    _apply_eval_coach_guardrails_compat(guarded_stub, source_data.rollups, effective=effective)
+    _apply_eval_coach_guardrails_compat(guarded_stub, source_data.rollups, effective)
     machine_obj["plan"] = guarded_stub["plan"]
 
     explainer_prompt = _coach_prompting.build_explainer_prompt_text(
@@ -554,7 +782,14 @@ def _run_training_plan_pipeline(
         effective=effective,
     )
     _recompute_planned_hours(obj)
-    _apply_eval_coach_guardrails_compat(obj, source_data.rollups, effective=effective)
+    _apply_eval_coach_guardrails_compat(obj, source_data.rollups, effective)
+    obj = _finalize_training_plan_artifact(
+        obj,
+        combined=source_data.combined,
+        rollups=source_data.rollups,
+        deterministic_forecast=deterministic_forecast,
+        effective=effective,
+    )
 
     out_path = save_training_plan_output(
         output_path,
@@ -671,6 +906,7 @@ def run_coach_brief(
             resolved_goal,
             deterministic_forecast,
             source_data.rollups,
+            source_data.combined,
             output_path,
             prompting_dir=paths.prompting_directory,
             effective=effective,
