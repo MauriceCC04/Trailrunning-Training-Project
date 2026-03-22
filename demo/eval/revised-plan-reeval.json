@@ -1,0 +1,22 @@
+{
+  "delta_score": 0.0,
+  "grade": "A",
+  "original_score": 97.0,
+  "revised_score": 97.0,
+  "violations": [
+    {
+      "category": "justification",
+      "code": "WEAK_CLAIM_SUPPORT",
+      "details": {
+        "field_path": "risks[3].message",
+        "signal_ids": [
+          "forecast.recovery_capability.hrv_days_7d",
+          "forecast.recovery_capability.key"
+        ]
+      },
+      "message": "Claim attribution for risks[3].message does not use the most relevant evidence family.",
+      "penalty": 3,
+      "severity": "low"
+    }
+  ]
+}
