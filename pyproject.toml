@@ -45,7 +45,7 @@ warn_unused_ignores = true
 warn_redundant_casts = true
 warn_unused_configs = true
 check_untyped_defs = true
-disallow_untyped_defs = false  # baseline; tightened per-module below
+disallow_untyped_defs = false  # tests remain untyped; whole package is strict below
 no_implicit_optional = true
 warn_return_any = true
 ignore_missing_imports = true
@@ -60,31 +60,9 @@ module = [
 ]
 ignore_missing_imports = true
 
-# Modules that are already fully annotated — enforce stricter rules here
+# The whole package is fully annotated — enforce strict rules everywhere
 [[tool.mypy.overrides]]
-module = [
-  "trailtraining.contracts",
-  "trailtraining.forecast.*",
-  "trailtraining.llm.*",
-  "trailtraining.metrics.*",
-  "trailtraining.util.*",
-  "trailtraining.providers",
-  "trailtraining.data.strava",
-  "trailtraining.data.combine",
-  "trailtraining.data.personal_profile",
-]
-disallow_untyped_defs = true
-
-# Newly annotated modules graduating to strict
-[[tool.mypy.overrides]]
-module = [
-  "trailtraining.cli",
-  "trailtraining.commands.*",
-  "trailtraining.pipelines.intervals",
-  "trailtraining.pipelines.run_all",
-  "trailtraining.pipelines.run_all_intervals",
-  "trailtraining.pipelines.strava",
-]
+module = ["trailtraining.*"]
 disallow_untyped_defs = true
 
 [project.scripts]

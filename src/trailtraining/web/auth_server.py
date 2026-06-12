@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import Optional
+from typing import Optional, Union
 
 from flask import Flask, request
 
@@ -14,7 +14,7 @@ _auth_code: dict[str, str] = {}
 
 
 @_app.get("/authorization")
-def authorization():
+def authorization() -> Union[str, tuple[str, int]]:
     code = request.args.get("code")
     if code:
         _auth_code["code"] = code
